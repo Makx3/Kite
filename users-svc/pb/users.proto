@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package users;
+
+option go_package = "github.com/Makx3/Kite/users-svc/pb";
+
+// ─ Mensajes ─────────────────────────────────────────────
+
+message CreateUserRequest {
+  string username = 1;
+  string email = 2;
+}
+
+message CreateUserResponse {
+  string user_id = 1;
+  string status = 2;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  string user_id = 1;
+  string username = 2;
+  string email = 3;
+  string created_at = 4;
+}
+
+// ─ Servicio ─────────────────────────────────────────────
+
+service UserService {
+  rpc CreateUser (CreateUserRequest) returns (CreateUserResponse);
+  rpc GetUser (GetUserRequest) returns (GetUserResponse);
+}
