@@ -44,6 +44,9 @@ que se sumarán al gateway cuando estén listos.
 
 - Docker con Compose v2 (`docker compose`, no hace falta `docker-compose`).
 - Puertos libres en el host: **8080**.
+- **Python 3** en el host: solo lo usan los ejemplos de más abajo (para extraer un
+  campo del JSON) y el sembrador `scripts/seed-demo.py`. Nada del sistema lo
+  necesita para funcionar.
 
 Para el desarrollo sin Docker, además: Go 1.27+ y Python 3.14+ (ver *Desarrollo local*).
 
@@ -267,6 +270,28 @@ curl -s -X DELETE $BASE/users/$BOB/follow -H "X-User-Id: $ALICE"; echo
 
 > `python3 -c` solo se usa para extraer un campo del JSON. Sirve igual `jq -r .user_id`.
 
+### Datos de ejemplo
+
+Si prefieres partir de un grafo ya armado en vez de crearlo a mano, el repositorio
+incluye un sembrador que entra **solo por el gateway** (y por lo tanto ejercita los
+endpoints y el disparador de notificaciones de verdad):
+
+```bash
+python3 scripts/seed-demo.py
+```
+
+Crea 5 usuarios (`diego`, `maxi`, `carola`, `tomas`, `paula`) y 8 seguimientos,
+recorre los endpoints de lectura y termina imprimiendo `curl`s listos para copiar
+con los identificadores reales. Con `--env-file demo.env` deja además las variables
+`DIEGO_ID`, `MAXI_ID`, … en un archivo para `source`arlo.
+
+Es idempotente en el sentido de que avisa si los usuarios ya existen; para volver a
+empezar limpio: `docker compose down -v && docker compose up -d`.
+
+> Sobre la URL: el camino canónico es **sin** barra final (`/users/{user_id}`). El
+> gateway tolera una barra de más (`/users/{user_id}/`) y la resuelve igual, así que
+> no importa cuál de las dos se use.
+
 ---
 
 ## Códigos de error
@@ -358,7 +383,9 @@ base de prueba, por ejemplo `USERS_TEST_DB_DSN` o `RELATIONSHIPS_TEST_DB_DSN`.
 ├── api-gateway/                # REST → gRPC y agregación (Go)
 ├── users-svc/                  # identidad (Go)
 ├── relationships-svc/          # grafo de seguimiento (Go)
-└── notifications-svc/          # alertas (Python)
+├── notifications-svc/          # alertas (Python)
+└── scripts/
+    └── seed-demo.py            # dataset de ejemplo por el gateway
 ```
 
 Cada servicio sigue la misma forma: `cmd/server` para el arranque, `internal/`
