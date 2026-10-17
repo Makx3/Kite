@@ -1,0 +1,7 @@
+# Artefactos de Python que no deben versionarse.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
