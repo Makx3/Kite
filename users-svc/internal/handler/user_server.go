@@ -32,7 +32,7 @@ func NewUserServer(svc *service.UserService) *UserServer {
 
 // CreateUser expone service.CreateUser.
 func (s *UserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.CreateUserResponse, error) {
-	user, err := s.svc.CreateUser(ctx, req.GetUsername(), req.GetEmail())
+	user, err := s.svc.CreateUser(ctx, req.GetUsername(), req.GetEmail(), req.GetDisplayName())
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -48,10 +48,11 @@ func (s *UserServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.G
 	return &pb.GetUserResponse{User: toProto(user)}, nil
 }
 
-// UpdateUser expone service.UpdateUser. Los campos no provistos en
-// el protobuf llegan como nil y se ignoran (semántica de parche).
+// UpdateUser expone service.UpdateUser. Los campos opcionales no
+// provistos en el protobuf llegan como nil y se ignoran (semántica
+// de parche); el username no es editable.
 func (s *UserServer) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb.UpdateUserResponse, error) {
-	user, err := s.svc.UpdateUser(ctx, req.GetUserId(), req.Username, req.Email)
+	user, err := s.svc.UpdateUser(ctx, req.GetUserId(), req.DisplayName, req.Email)
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -69,6 +70,8 @@ func toStatus(err error) error {
 		return status.Error(codes.NotFound, store.ErrNotFound.Error())
 	case errors.Is(err, store.ErrEmailTaken):
 		return status.Error(codes.AlreadyExists, store.ErrEmailTaken.Error())
+	case errors.Is(err, store.ErrUsernameTaken):
+		return status.Error(codes.AlreadyExists, store.ErrUsernameTaken.Error())
 	case errors.Is(err, context.DeadlineExceeded):
 		return status.Error(codes.DeadlineExceeded, "operación excedió el tiempo límite")
 	default:
@@ -80,10 +83,11 @@ func toStatus(err error) error {
 // toProto convierte la entidad de dominio al mensaje protobuf.
 func toProto(u domain.User) *pb.User {
 	return &pb.User{
-		UserId:    u.ID,
-		Username:  u.Username,
-		Email:     u.Email,
-		CreatedAt: timestamppb.New(u.CreatedAt),
-		UpdatedAt: timestamppb.New(u.UpdatedAt),
+		UserId:      u.ID,
+		Username:    u.Username,
+		Email:       u.Email,
+		DisplayName: u.DisplayName,
+		CreatedAt:   timestamppb.New(u.CreatedAt),
+		UpdatedAt:   timestamppb.New(u.UpdatedAt),
 	}
 }

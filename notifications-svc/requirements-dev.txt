@@ -1,0 +1,5 @@
+# Dependencias solo para desarrollo: generación de stubs y pruebas.
+# No se instalan en la imagen de producción.
+-r requirements.txt
+grpcio-tools==1.84.0
+pytest==9.1.1

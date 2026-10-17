@@ -19,10 +19,14 @@ import (
 // traduce a gRPC InvalidArgument.
 var ErrValidation = errors.New("datos inválidos")
 
-// usernameMin/Max acotan la longitud del nombre de usuario.
+// Límites de longitud alineados con el diseño (username VARCHAR(50),
+// display_name VARCHAR(80)). El mínimo de username es una regla propia
+// razonable: el diseño solo fija el máximo.
 const (
-	usernameMin = 3
-	usernameMax = 32
+	usernameMin    = 3
+	usernameMax    = 50
+	displayNameMin = 1
+	displayNameMax = 80
 )
 
 // UserService orquesta las operaciones sobre la entidad User.
@@ -34,14 +38,15 @@ type UserService struct {
 func New(s store.UserStore) *UserService { return &UserService{store: s} }
 
 // CreateUser valida la entrada y persiste el usuario.
-func (s *UserService) CreateUser(ctx context.Context, username, email string) (domain.User, error) {
+func (s *UserService) CreateUser(ctx context.Context, username, email, displayName string) (domain.User, error) {
 	username = strings.TrimSpace(username)
 	email = strings.TrimSpace(email)
-	if err := validateUser(username, email); err != nil {
+	displayName = strings.TrimSpace(displayName)
+	if err := validateUser(username, email, displayName); err != nil {
 		return domain.User{}, err
 	}
 
-	rec, err := s.store.Create(ctx, username, email)
+	rec, err := s.store.Create(ctx, username, email, displayName)
 	if err != nil {
 		return domain.User{}, err
 	}
@@ -60,24 +65,25 @@ func (s *UserService) GetUser(ctx context.Context, id string) (domain.User, erro
 	return toDomain(rec), nil
 }
 
-// UpdateUser aplica un parche con los campos no-nulos. exige al
-// menos un campo y valida cada uno presente.
-func (s *UserService) UpdateUser(ctx context.Context, id string, username, email *string) (domain.User, error) {
+// UpdateUser aplica un parche con los campos no-nulos (display_name
+// y/o email). Exige al menos un campo y valida cada uno presente. El
+// username no se edita: es el identificador estable del usuario.
+func (s *UserService) UpdateUser(ctx context.Context, id string, displayName, email *string) (domain.User, error) {
 	if strings.TrimSpace(id) == "" {
 		return domain.User{}, fmt.Errorf("%w: user_id es obligatorio", ErrValidation)
 	}
-	if username == nil && email == nil {
-		return domain.User{}, fmt.Errorf("%w: se debe indicar username o email", ErrValidation)
+	if displayName == nil && email == nil {
+		return domain.User{}, fmt.Errorf("%w: se debe indicar display_name o email", ErrValidation)
 	}
 
 	// Normaliza y valida solo lo presente.
-	finalUser, finalEmail := username, email
-	if username != nil {
-		v := strings.TrimSpace(*username)
-		if n := utf8.RuneCountInString(v); n < usernameMin || n > usernameMax {
-			return domain.User{}, fmt.Errorf("%w: username debe tener entre %d y %d caracteres", ErrValidation, usernameMin, usernameMax)
+	finalName, finalEmail := displayName, email
+	if displayName != nil {
+		v := strings.TrimSpace(*displayName)
+		if n := utf8.RuneCountInString(v); n < displayNameMin || n > displayNameMax {
+			return domain.User{}, fmt.Errorf("%w: display_name debe tener entre %d y %d caracteres", ErrValidation, displayNameMin, displayNameMax)
 		}
-		finalUser = &v
+		finalName = &v
 	}
 	if email != nil {
 		v := strings.TrimSpace(*email)
@@ -87,7 +93,7 @@ func (s *UserService) UpdateUser(ctx context.Context, id string, username, email
 		finalEmail = &v
 	}
 
-	rec, err := s.store.Update(ctx, id, finalUser, finalEmail)
+	rec, err := s.store.Update(ctx, id, finalName, finalEmail)
 	if err != nil {
 		return domain.User{}, err
 	}
@@ -95,12 +101,15 @@ func (s *UserService) UpdateUser(ctx context.Context, id string, username, email
 }
 
 // validateUser aplica las reglas de creación.
-func validateUser(username, email string) error {
+func validateUser(username, email, displayName string) error {
 	if n := utf8.RuneCountInString(username); n < usernameMin || n > usernameMax {
 		return fmt.Errorf("%w: username debe tener entre %d y %d caracteres", ErrValidation, usernameMin, usernameMax)
 	}
 	if _, err := mail.ParseAddress(email); err != nil {
 		return fmt.Errorf("%w: email con formato inválido", ErrValidation)
+	}
+	if n := utf8.RuneCountInString(displayName); n < displayNameMin || n > displayNameMax {
+		return fmt.Errorf("%w: display_name debe tener entre %d y %d caracteres", ErrValidation, displayNameMin, displayNameMax)
 	}
 	return nil
 }
@@ -108,10 +117,11 @@ func validateUser(username, email string) error {
 // toDomain convierte la fila del store en la entidad de negocio.
 func toDomain(rec store.UserRecord) domain.User {
 	return domain.User{
-		ID:        rec.ID,
-		Username:  rec.Username,
-		Email:     rec.Email,
-		CreatedAt: rec.CreatedAt,
-		UpdatedAt: rec.UpdatedAt,
+		ID:          rec.ID,
+		Username:    rec.Username,
+		Email:       rec.Email,
+		DisplayName: rec.DisplayName,
+		CreatedAt:   rec.CreatedAt,
+		UpdatedAt:   rec.UpdatedAt,
 	}
 }

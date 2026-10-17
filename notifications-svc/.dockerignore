@@ -1,0 +1,11 @@
+# Artefactos locales que no deben entrar al contexto de build.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+tests/
+conftest.py
+requirements-dev.txt
+*.md
+.env

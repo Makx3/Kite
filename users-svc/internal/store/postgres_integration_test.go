@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -40,23 +41,36 @@ func TestPostgresIntegracion(t *testing.T) {
 		t.Fatalf("Migrate: %v", err)
 	}
 
-	// Email único por corrida para no chocar con datos previos.
-	email := "it-" + time.Now().Format("20060102150405.000000000") + "@ufro.cl"
+	// username y email únicos por corrida para no chocar con datos
+	// previos: ahora ambos tienen restricción UNIQUE.
+	unique := fmt.Sprintf("%d", time.Now().UnixNano())
+	username := "it" + unique
+	email := "it-" + unique + "@ufro.cl"
+	displayName := "Integración " + unique
 
-	creado, err := pg.Create(ctx, "integracion", email)
+	creado, err := pg.Create(ctx, username, email, displayName)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if creado.ID == "" {
 		t.Fatal("Create no devolvió user_id")
 	}
+	if creado.DisplayName != displayName {
+		t.Errorf("Create devolvió display_name %q, esperaba %q", creado.DisplayName, displayName)
+	}
 	if creado.CreatedAt.IsZero() {
 		t.Error("created_at sin valor (la BD debe generarlo)")
 	}
 
-	// Create con el mismo email: la restricción UNIQUE debe traducirse.
-	if _, err := pg.Create(ctx, "otro", email); !errors.Is(err, store.ErrEmailTaken) {
+	// Email repetido: la restricción UNIQUE debe traducirse.
+	if _, err := pg.Create(ctx, username+"x", email, displayName); !errors.Is(err, store.ErrEmailTaken) {
 		t.Errorf("esperaba ErrEmailTaken, obtuve: %v", err)
+	}
+
+	// Username repetido: se distingue del email gracias al nombre
+	// de la restricción violada.
+	if _, err := pg.Create(ctx, username, "otro-"+email, displayName); !errors.Is(err, store.ErrUsernameTaken) {
+		t.Errorf("esperaba ErrUsernameTaken, obtuve: %v", err)
 	}
 
 	// Get existente e inexistente (incluido un UUID malformado).
@@ -64,27 +78,43 @@ func TestPostgresIntegracion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if obtenido.Email != email {
-		t.Errorf("Get devolvió email %q, esperaba %q", obtenido.Email, email)
+	if obtenido.Email != email || obtenido.DisplayName != displayName {
+		t.Errorf("Get devolvió %q/%q, esperaba %q/%q", obtenido.Email, obtenido.DisplayName, email, displayName)
 	}
 	if _, err := pg.Get(ctx, "no-es-uuid"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("esperaba ErrNotFound para id malformado, obtuve: %v", err)
 	}
 
-	// Update de parche: solo el username; el email debe conservarse.
-	nuevoNombre := "integracion-actualizado"
+	// Update de parche: solo display_name; username y email intactos.
+	nuevoNombre := displayName + " (editado)"
 	actualizado, err := pg.Update(ctx, creado.ID, &nuevoNombre, nil)
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if actualizado.Username != nuevoNombre {
-		t.Errorf("username no actualizado: %q", actualizado.Username)
+	if actualizado.DisplayName != nuevoNombre {
+		t.Errorf("display_name no actualizado: %q", actualizado.DisplayName)
+	}
+	if actualizado.Username != username {
+		t.Errorf("username cambió sin pedirlo: %q", actualizado.Username)
 	}
 	if actualizado.Email != email {
 		t.Errorf("email cambió sin pedirlo: %q", actualizado.Email)
 	}
 	if !actualizado.UpdatedAt.After(creado.UpdatedAt) {
 		t.Error("updated_at no avanzó")
+	}
+
+	// Update de parche: solo email; display_name intacto.
+	nuevoEmail := "editado-" + email
+	soloEmail, err := pg.Update(ctx, creado.ID, nil, &nuevoEmail)
+	if err != nil {
+		t.Fatalf("Update (email): %v", err)
+	}
+	if soloEmail.Email != nuevoEmail {
+		t.Errorf("email no actualizado: %q", soloEmail.Email)
+	}
+	if soloEmail.DisplayName != nuevoNombre {
+		t.Errorf("display_name cambió sin pedirlo: %q", soloEmail.DisplayName)
 	}
 
 	// Update sobre id inexistente.

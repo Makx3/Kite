@@ -1,0 +1,4 @@
+# Artefactos locales que no deben entrar al contexto de build.
+api-gateway
+*.test
+.env
