@@ -531,6 +531,44 @@ func TestRaizConOtroMetodoResponde405(t *testing.T) {
 	}
 }
 
+// La barra final es la variante que más se teclea en el navegador: no debe
+// producir 404, sino llegar al mismo manejador.
+func TestBarraFinalEsTolerada(t *testing.T) {
+	// POST /users/{id}/follow exige X-User-Id; sin él el manejador responde
+	// 400. Si llegó al manejador, la barra final se toleró; si no, sería 404.
+	rec := do(t, newTestRouter(t, nil, nil, nil), http.MethodPost, "/users/u-1/follow/", "", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("esperaba 400 (la petición llegó al manejador), obtuve %d", rec.Code)
+	}
+	if body := decodeBody(t, rec); body["error"] != "missing_user" {
+		t.Fatalf("cuerpo inesperado: %v", body)
+	}
+
+	// Una lectura, con el backend de prueba: debe devolver el usuario.
+	rec = do(t, newTestRouter(t, nil, nil, nil), http.MethodGet, "/users/u-1/", "", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("esperaba 200 para GET /users/u-1/, obtuve %d", rec.Code)
+	}
+	if body := decodeBody(t, rec); body["username"] != "diego" {
+		t.Fatalf("usuario inesperado: %v", body)
+	}
+}
+
+// Tolerar la barra final no debe inventar rutas: un camino que no existe sigue
+// dando 404, con o sin barra.
+func TestBarraFinalNoInventaRutas(t *testing.T) {
+	for _, camino := range []string{"/no-existe", "/no-existe/", "/users/u-1/nada/"} {
+		rec := do(t, newTestRouter(t, nil, nil, nil), http.MethodGet, camino, "", nil)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: esperaba 404, obtuve %d", camino, rec.Code)
+			continue
+		}
+		if body := decodeBody(t, rec); body["error"] != "not_found" {
+			t.Errorf("%s: cuerpo inesperado: %v", camino, body)
+		}
+	}
+}
+
 func TestHealthReportaBackends(t *testing.T) {
 	rec := do(t, newTestRouter(t, nil, nil, nil), http.MethodGet, "/health", "", nil)
 	if rec.Code != http.StatusOK {

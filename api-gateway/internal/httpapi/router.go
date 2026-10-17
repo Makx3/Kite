@@ -62,5 +62,5 @@ func NewRouter(deps Deps, logger *slog.Logger) http.Handler {
 	// Salud
 	mux.HandleFunc("GET /health", h.health)
 
-	return chain(uniformNotFound(mux), recovery(logger), accessLog(logger), timeout(deps.HandlerTimeout))
+	return chain(routeFallbacks(mux), recovery(logger), accessLog(logger), timeout(deps.HandlerTimeout))
 }
