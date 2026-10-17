@@ -17,16 +17,20 @@ var ErrNotFound = errors.New("usuario no encontrado")
 // por otro usuario (restricción UNIQUE de la base de datos).
 var ErrEmailTaken = errors.New("email ya registrado")
 
+// ErrUsernameTaken se devuelve cuando el username ya está en uso
+// por otro usuario (restricción UNIQUE de la base de datos).
+var ErrUsernameTaken = errors.New("username ya registrado")
+
 // UserStore es la interfaz de persistencia de usuarios.
 type UserStore interface {
 	// Create inserta un usuario y devuelve la fila persistida,
 	// incluyendo el ID y timestamps generados por la base de datos.
-	Create(ctx context.Context, username, email string) (UserRecord, error)
+	Create(ctx context.Context, username, email, displayName string) (UserRecord, error)
 	// Get retorna el usuario o ErrNotFound.
 	Get(ctx context.Context, id string) (UserRecord, error)
 	// Update aplica un parche: solo los punteros no-nulos se
 	// modifican. Retorna ErrNotFound si el id no existe.
-	Update(ctx context.Context, id string, username, email *string) (UserRecord, error)
+	Update(ctx context.Context, id string, displayName, email *string) (UserRecord, error)
 	// Ping verifica la conectividad con la base de datos.
 	Ping(ctx context.Context) error
 	// Close libera los recursos del pool.
@@ -35,9 +39,10 @@ type UserStore interface {
 
 // UserRecord es la fila de usuarios tal como se persiste.
 type UserRecord struct {
-	ID        string
-	Username  string
-	Email     string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID          string
+	Username    string
+	Email       string
+	DisplayName string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
