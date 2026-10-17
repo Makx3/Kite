@@ -143,7 +143,10 @@ gateway solo transporta, valida la forma de la petición y **agrega**.
 | `GET /health` | (local) | Estado del gateway y de sus backends |
 
 Las operaciones que actúan **en nombre de una persona** reciben su identidad en el
-encabezado **`X-User-Id`**.
+encabezado **`X-User-Id`**. La raíz (`GET /`) devuelve un índice de la API, y el
+gateway tolera una barra final de más (`/users/{id}/`) reescribiendo el camino
+internamente, para que la URL que se teclea a mano nunca dependa de un detalle del
+enrutador.
 
 ---
 
@@ -615,7 +618,7 @@ El sistema se diseñó para que **la caída de una pieza no tumbe el resto**.
 
 **Evidencia de verificación.** Sobre el sistema levantado con `docker compose`:
 
-- **41 comprobaciones** end-to-end por HTTP contra el único puerto publicado,
+- **44 comprobaciones** end-to-end por HTTP contra el único puerto publicado,
   cubriendo las once rutas del gateway, con persistencia real y el disparador de
   notificaciones.
 - **16 comprobaciones** de resiliencia **con contenedores reales**: con `users-svc`
@@ -625,6 +628,10 @@ El sistema se diseñó para que **la caída de una pieza no tumbe el resto**.
   **persistencia** de los datos tras un `docker compose down` + `up` (volúmenes).
 - **Ejemplos del README** ejecutados literalmente desde un sistema vacío
   (`down -v`), incluidas las migraciones.
+- **Pruebas unitarias** de cada servicio (Go: `go test ./...`; Notifications:
+  `pytest`), y **pruebas de integración de la capa de datos contra un PostgreSQL
+  real** para los tres servicios (`*_TEST_DB_DSN`), que ejercitan las migraciones
+  embebidas y las consultas sobre la base, no solo dobles en memoria.
 
 ---
 
@@ -636,8 +643,8 @@ El sistema se diseñó para que **la caída de una pieza no tumbe el resto**.
 | API Gateway como única superficie REST y único punto de entrada | ✅ 11 rutas; solo el 8080 publicado |
 | Servicios internos inaccesibles desde fuera de Docker | ✅ Red `backend` interna; 50051–50053 cerrados al host (verificado) |
 | Servicio de Usuarios | ✅ `users-svc` |
-| ≥ 3 servicios de negocio | ✅ Relationships, Notifications (y Posts/Feed/Likes en el diseño) |
-| ≥ 2 servicios de negocio en Go | ✅ Users, Relationships, Gateway en Go |
+| ≥ 3 servicios de negocio (además del Gateway y de Usuarios) | ⏳ 2 en funcionamiento (Relationships y Notifications); **Posts**, **Feed** y **Likes** están descritos en el diseño y son los que completan el mínimo |
+| ≥ 2 servicios de negocio en Go | ⏳ 1 en funcionamiento (Relationships); **Posts** y **Feed** (ambos en Go) están en el diseño y completan el mínimo |
 | Comunicación interna por gRPC/Protobuf | ✅ Todos los contratos `.proto` versionados |
 | Cada servicio en su propia imagen Docker | ✅ Cuatro imágenes |
 | `docker compose up` levanta el sistema | ✅ Verificado desde cero |
