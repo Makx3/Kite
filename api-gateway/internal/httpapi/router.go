@@ -39,6 +39,11 @@ func NewRouter(deps Deps, logger *slog.Logger) http.Handler {
 
 	mux := http.NewServeMux()
 
+	// Índice de la API en la raíz. El patrón "GET /{$}" coincide solo con el
+	// camino exacto "/": un comodín "/" se tragaría los caminos cuyo método no
+	// coincide y rompería los 405 (por ejemplo GET /users respondería 200).
+	mux.HandleFunc("GET /{$}", h.index)
+
 	// Identidad
 	mux.HandleFunc("POST /users", h.createUser)
 	mux.HandleFunc("GET /users/{user_id}", h.getUser)
@@ -57,5 +62,5 @@ func NewRouter(deps Deps, logger *slog.Logger) http.Handler {
 	// Salud
 	mux.HandleFunc("GET /health", h.health)
 
-	return chain(mux, recovery(logger), accessLog(logger), timeout(deps.HandlerTimeout))
+	return chain(uniformNotFound(mux), recovery(logger), accessLog(logger), timeout(deps.HandlerTimeout))
 }

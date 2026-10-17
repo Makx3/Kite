@@ -130,6 +130,7 @@ gateway solo transporta, valida la forma de la petición y **agrega**.
 
 | Método REST | Delega en | Notas |
 | :--- | :--- | :--- |
+| `GET /` | (local) | Índice de la API: mapa de rutas y del encabezado `X-User-Id` |
 | `POST /users` | `Users.CreateUser` | `201 Created` |
 | `GET /users/{user_id}` | `Users.GetUser` | `200` |
 | `PATCH /users/{user_id}` | `Users.UpdateUser` | Parche parcial |
@@ -596,7 +597,7 @@ El sistema se diseñó para que **la caída de una pieza no tumbe el resto**.
   | HTTP | `error` | Cuándo |
   | :---: | :--- | :--- |
   | 400 | `invalid_argument`, `invalid_body`, `invalid_query`, `missing_user` | Datos inválidos o falta `X-User-Id` |
-  | 404 | `not_found` | El recurso no existe |
+  | 404 | `not_found` | El recurso o la ruta no existe |
   | 405 | — | Método no permitido en la ruta |
   | 409 | `already_exists` | `username` o `email` duplicados |
   | 502 | `bad_gateway` | El servicio devolvió un error inesperado |
@@ -614,8 +615,8 @@ El sistema se diseñó para que **la caída de una pieza no tumbe el resto**.
 
 **Evidencia de verificación.** Sobre el sistema levantado con `docker compose`:
 
-- **35 comprobaciones** end-to-end por HTTP contra el único puerto publicado,
-  cubriendo las diez rutas del gateway, con persistencia real y el disparador de
+- **41 comprobaciones** end-to-end por HTTP contra el único puerto publicado,
+  cubriendo las once rutas del gateway, con persistencia real y el disparador de
   notificaciones.
 - **16 comprobaciones** de resiliencia **con contenedores reales**: con `users-svc`
   detenido, `GET /users/{id}` responde **503** y `GET /notifications` sigue en
@@ -632,7 +633,7 @@ El sistema se diseñó para que **la caída de una pieza no tumbe el resto**.
 | Requisito | Estado |
 | :--- | :--- |
 | Repositorio Git público | ✅ GitHub, `Makx3/Kite`, modelo Git Flow (`main`/`develop`/`feat/*`) |
-| API Gateway como única superficie REST y único punto de entrada | ✅ 10 rutas; solo el 8080 publicado |
+| API Gateway como única superficie REST y único punto de entrada | ✅ 11 rutas; solo el 8080 publicado |
 | Servicios internos inaccesibles desde fuera de Docker | ✅ Red `backend` interna; 50051–50053 cerrados al host (verificado) |
 | Servicio de Usuarios | ✅ `users-svc` |
 | ≥ 3 servicios de negocio | ✅ Relationships, Notifications (y Posts/Feed/Likes en el diseño) |
