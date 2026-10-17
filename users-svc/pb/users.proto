@@ -4,7 +4,23 @@ package users;
 
 option go_package = "github.com/Makx3/Kite/users-svc/pb";
 
-// ─ Mensajes ─────────────────────────────────────────────
+import "google/protobuf/timestamp.proto";
+
+// ─────────────────────────────────────────────────────────
+// User: entidad de identidad del sistema. El user_id es un
+// UUID generado por la base de datos del servicio (nunca por
+// el caller), de modo que dos servicios no pueden colisionar.
+// ─────────────────────────────────────────────────────────
+
+message User {
+  string user_id = 1;
+  string username = 2;
+  string email = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+// ─ Mensajes de operación ─────────────────────────────────
 
 message CreateUserRequest {
   string username = 1;
@@ -12,8 +28,7 @@ message CreateUserRequest {
 }
 
 message CreateUserResponse {
-  string user_id = 1;
-  string status = 2;
+  User user = 1;
 }
 
 message GetUserRequest {
@@ -21,15 +36,28 @@ message GetUserRequest {
 }
 
 message GetUserResponse {
-  string user_id = 1;
-  string username = 2;
-  string email = 3;
-  string created_at = 4;
+  User user = 1;
 }
 
-// ─ Servicio ─────────────────────────────────────────────
+// Actualización de parche: solo los campos provistos se
+// modifican; los omitidos conservan su valor actual.
+message UpdateUserRequest {
+  string user_id = 1;
+  optional string username = 2;
+  optional string email = 3;
+}
 
+message UpdateUserResponse {
+  User user = 1;
+}
+
+// ─ Servicio ──────────────────────────────────────────────
+
+// UserService administra la entidad Usuario: creación,
+// consulta y actualización de perfil. La autenticación queda
+// fuera del alcance de la primera entrega.
 service UserService {
   rpc CreateUser (CreateUserRequest) returns (CreateUserResponse);
   rpc GetUser (GetUserRequest) returns (GetUserResponse);
+  rpc UpdateUser (UpdateUserRequest) returns (UpdateUserResponse);
 }
