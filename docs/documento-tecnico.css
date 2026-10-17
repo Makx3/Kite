@@ -1,0 +1,214 @@
+/* Estilo del documento técnico de Kite.
+   Se usa con `pandoc --embed-resources` y luego Chrome en modo headless
+   para producir el PDF. DejaVu Sans cubre acentos, la flecha → y la ñ. */
+
+@page {
+  size: A4;
+  margin: 18mm 16mm 20mm 16mm;
+}
+
+html {
+  font-family: "DejaVu Sans", "Liberation Sans", Arial, sans-serif;
+  font-size: 10pt;
+  line-height: 1.5;
+  color: #16202b;
+}
+
+body {
+  margin: 0;
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* ── Jerarquía de títulos ─────────────────────────────── */
+
+h1 {
+  font-size: 17pt;
+  color: #0f3d5c;
+  border-bottom: 2.5px solid #0f3d5c;
+  padding-bottom: 4px;
+  margin: 0 0 14px;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+h1:not(:first-of-type) {
+  page-break-before: always;
+  break-before: page;
+  margin-top: 0;
+}
+
+h2 {
+  font-size: 13pt;
+  color: #0f3d5c;
+  margin: 18px 0 8px;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+h3 {
+  font-size: 11.5pt;
+  color: #1d5a80;
+  margin: 14px 0 6px;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+p {
+  margin: 0 0 8px;
+}
+
+/* ── Portada ───────────────────────────────────────────── */
+
+header#title-block-header {
+  text-align: center;
+  border-bottom: none;
+  margin: 0 0 6px;
+  padding: 0 0 12px;
+}
+
+header#title-block-header h1.title {
+  font-size: 24pt;
+  color: #0f3d5c;
+  border-bottom: none;
+  margin: 0 0 4px;
+  padding: 0;
+  page-break-before: avoid;
+  break-before: avoid;
+}
+
+header#title-block-header p.subtitle {
+  font-size: 13pt;
+  color: #1d5a80;
+  margin: 0 0 10px;
+  font-weight: bold;
+}
+
+header#title-block-header p.author {
+  font-size: 11pt;
+  color: #16202b;
+  margin: 0;
+}
+
+header#title-block-header p.date {
+  font-size: 9.5pt;
+  color: #5b6b7c;
+  margin: 2px 0 0;
+}
+
+/* ── Tablas ────────────────────────────────────────────── */
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10px 0 14px;
+  font-size: 8.8pt;
+}
+
+/* La tabla puede continuar en la página siguiente, pero ninguna fila se
+   parte por la mitad: así no quedan páginas casi vacías por una tabla
+   que no cabía entera. */
+tr {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+thead {
+  display: table-header-group;
+}
+
+th {
+  background: #0f3d5c;
+  color: #ffffff;
+  text-align: left;
+  padding: 5px 7px;
+  border: 1px solid #0f3d5c;
+  font-weight: bold;
+}
+
+td {
+  padding: 4px 7px;
+  border: 1px solid #c8d4de;
+  vertical-align: top;
+}
+
+tbody tr:nth-child(even) {
+  background: #f2f6f9;
+}
+
+/* ── Código ────────────────────────────────────────────── */
+
+code {
+  font-family: "DejaVu Sans Mono", "Liberation Mono", monospace;
+  font-size: 8.8pt;
+  background: #eef2f5;
+  border: 1px solid #dbe3ea;
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+pre {
+  background: #f6f8fa;
+  border: 1px solid #dbe3ea;
+  border-left: 3px solid #1d5a80;
+  border-radius: 3px;
+  padding: 8px 10px;
+  margin: 8px 0 12px;
+  font-size: 8.6pt;
+  line-height: 1.4;
+  overflow-x: auto;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  text-align: left;
+}
+
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* ── Imagen del diagrama ───────────────────────────────── */
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 12px auto;
+  border: 1px solid #dbe3ea;
+  border-radius: 4px;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+/* ── Listas y citas ────────────────────────────────────── */
+
+ul,
+ol {
+  margin: 6px 0 10px;
+  padding-left: 22px;
+}
+
+li {
+  margin-bottom: 3px;
+}
+
+blockquote {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-left: 3px solid #9db4c6;
+  background: #f4f7f9;
+  color: #3c4b5a;
+  font-size: 9.4pt;
+}
+
+/* Las negritas dentro de listas y celdas se distinguen bien en impresión. */
+strong {
+  color: #0d2b40;
+}
+
+a {
+  color: #1d5a80;
+  text-decoration: none;
+}
