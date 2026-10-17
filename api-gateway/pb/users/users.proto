@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+// Copia del contrato publicado por el servicio Users.
+// Vive aquí porque cada servicio compila desde su propio contexto de
+// build (su Dockerfile) y necesita el cliente gRPC localmente; un proto
+// compartido en la raíz del repo acoplaría los builds entre servicios.
+// Si el contrato de Users cambia, actualizar esta copia y regenerar los
+// stubs de Go (ver AGENTS.md).
+
+package users;
+
+option go_package = "github.com/Makx3/Kite/api-gateway/pb/users";
+
+import "google/protobuf/timestamp.proto";
+
+// ─────────────────────────────────────────────────────────
+// User: entidad de identidad del sistema. El user_id es un
+// UUID generado por la base de datos del servicio (nunca por
+// el caller), de modo que dos servicios no pueden colisionar.
+// ─────────────────────────────────────────────────────────
+
+message User {
+  string user_id = 1;
+  string username = 2;     // identificador estable; no se edita
+  string email = 3;
+  string display_name = 4; // nombre visible
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+// ─ Mensajes de operación ─────────────────────────────────
+
+message CreateUserRequest {
+  string username = 1;
+  string email = 2;
+  string display_name = 3;
+}
+
+message CreateUserResponse {
+  User user = 1;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
+// Actualización de parche: solo los campos provistos se
+// modifican; los omitidos conservan su valor actual. El
+// username queda fuera: es el identificador estable del usuario.
+message UpdateUserRequest {
+  string user_id = 1;
+  optional string display_name = 2;
+  optional string email = 3;
+}
+
+message UpdateUserResponse {
+  User user = 1;
+}
+
+// ─ Servicio ──────────────────────────────────────────────
+
+// UserService administra la entidad Usuario: creación,
+// consulta y actualización de perfil. La autenticación queda
+// fuera del alcance de la primera entrega.
+service UserService {
+  rpc CreateUser (CreateUserRequest) returns (CreateUserResponse);
+  rpc GetUser (GetUserRequest) returns (GetUserResponse);
+  rpc UpdateUser (UpdateUserRequest) returns (UpdateUserResponse);
+}
