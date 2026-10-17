@@ -106,6 +106,21 @@ Las operaciones que actúan **en nombre de un usuario** lo reciben en el encabez
 `X-User-Id`. La primera entrega no incluye autenticación: ese encabezado es la
 identidad declarada por el cliente.
 
+### 0. Índice de la API — `GET /`
+
+```bash
+curl -s localhost:8080/
+```
+
+```json
+{"service":"Kite — API Gateway","version":"entrega-1","docs":"https://github.com/Makx3/Kite#readme","note":"Las operaciones que actúan en nombre de un usuario reciben su identidad en el encabezado X-User-Id. Este gateway es la única superficie del sistema: la comunicación interna es gRPC.","endpoints":[{"method":"GET","path":"/","description":"Índice de la API (esta respuesta)"},{"method":"POST","path":"/users","description":"Crear un usuario"}, "..."]}
+```
+
+El gateway es una API, no un sitio web: no hay HTML que navegar. Aun así, la
+raíz devuelve el mapa de rutas para que abrir `http://localhost:8080/` en el
+navegador sea útil en lugar de un `404` seco. Es la única ruta que no delega en
+un microservicio.
+
 ### 1. Crear un usuario — `POST /users`
 
 ```bash
@@ -265,7 +280,7 @@ Todas las respuestas de error tienen la misma forma:
 | HTTP | `error` | Cuándo |
 | :---: | :--- | :--- |
 | 400 | `invalid_argument`, `invalid_body`, `invalid_query`, `missing_user` | Datos inválidos o falta el encabezado `X-User-Id` |
-| 404 | `not_found` | El recurso no existe |
+| 404 | `not_found` | El recurso o la ruta no existe |
 | 405 | — | Método no permitido para esa ruta |
 | 409 | `already_exists` | Username o email ya registrados |
 | 502 | `bad_gateway` | El servicio de destino devolvió un error inesperado |

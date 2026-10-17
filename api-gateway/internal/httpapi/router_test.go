@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -474,10 +475,57 @@ func TestRutaInexistenteResponde404(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("esperaba 404, obtuve %d", rec.Code)
 	}
+	// El 404 debe usar el mismo cuerpo que el resto de la API, no el
+	// "404 page not found" en texto plano del enrutador de Go.
+	body := decodeBody(t, rec)
+	if body["error"] != "not_found" {
+		t.Fatalf("cuerpo inesperado para una ruta inexistente: %v", body)
+	}
 }
 
 func TestMetodoNoPermitidoResponde405(t *testing.T) {
 	rec := do(t, newTestRouter(t, nil, nil, nil), http.MethodDelete, "/users", "", nil)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("esperaba 405, obtuve %d", rec.Code)
+	}
+}
+
+// La raíz del gateway es una API, no un sitio: GET / devuelve un índice con
+// las rutas del contrato para que abrir la URL base en el navegador sea útil.
+func TestRaizDevuelveIndiceDeLaAPI(t *testing.T) {
+	rec := do(t, newTestRouter(t, nil, nil, nil), http.MethodGet, "/", "", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("esperaba 200, obtuve %d", rec.Code)
+	}
+	body := decodeBody(t, rec)
+	if body["service"] == nil || body["endpoints"] == nil {
+		t.Fatalf("el índice no describe la API: %v", body)
+	}
+	rutas, ok := body["endpoints"].([]any)
+	if !ok || len(rutas) == 0 {
+		t.Fatalf("endpoints mal formados: %v", body["endpoints"])
+	}
+	// La raíz debe anunciarse con el camino que ve el cliente, no con el
+	// patrón interno de ServeMux.
+	var vistos []string
+	for _, r := range rutas {
+		fila, _ := r.(map[string]any)
+		if fila["path"] == "/{$}" {
+			t.Errorf("el índice filtra el patrón interno del enrutador: %v", fila)
+		}
+		vistos = append(vistos, fila["method"].(string)+" "+fila["path"].(string))
+	}
+	for _, esperada := range []string{"POST /users", "GET /users/{user_id}", "GET /notifications", "GET /health"} {
+		if !slices.Contains(vistos, esperada) {
+			t.Errorf("falta la ruta %q en el índice: %v", esperada, vistos)
+		}
+	}
+}
+
+// El patrón "GET /{$}" solo coincide con la raíz exacta: un comodín "/" se
+// tragaría los caminos con método incorrecto y rompería estos 405.
+func TestRaizConOtroMetodoResponde405(t *testing.T) {
+	rec := do(t, newTestRouter(t, nil, nil, nil), http.MethodDelete, "/", "", nil)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("esperaba 405, obtuve %d", rec.Code)
 	}
