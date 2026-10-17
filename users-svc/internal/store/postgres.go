@@ -73,15 +73,15 @@ func (p *Postgres) Migrate(ctx context.Context) error {
 }
 
 // Create inserta y retorna la fila completa.
-func (p *Postgres) Create(ctx context.Context, username, email string) (UserRecord, error) {
+func (p *Postgres) Create(ctx context.Context, username, email, displayName string) (UserRecord, error) {
 	const q = `
-		INSERT INTO users (username, email)
-		VALUES ($1, $2)
-		RETURNING user_id::text, username, email, created_at, updated_at`
+		INSERT INTO users (username, email, display_name)
+		VALUES ($1, $2, $3)
+		RETURNING user_id::text, username, email, display_name, created_at, updated_at`
 
 	var rec UserRecord
-	err := p.pool.QueryRow(ctx, q, username, email).Scan(
-		&rec.ID, &rec.Username, &rec.Email, &rec.CreatedAt, &rec.UpdatedAt,
+	err := p.pool.QueryRow(ctx, q, username, email, displayName).Scan(
+		&rec.ID, &rec.Username, &rec.Email, &rec.DisplayName, &rec.CreatedAt, &rec.UpdatedAt,
 	)
 	if err != nil {
 		return UserRecord{}, translate(err)
@@ -94,13 +94,13 @@ func (p *Postgres) Create(ctx context.Context, username, email string) (UserReco
 // NotFound (un id malformado no puede pertenecer a nadie).
 func (p *Postgres) Get(ctx context.Context, id string) (UserRecord, error) {
 	const q = `
-		SELECT user_id::text, username, email, created_at, updated_at
+		SELECT user_id::text, username, email, display_name, created_at, updated_at
 		FROM users
 		WHERE user_id = $1`
 
 	var rec UserRecord
 	err := p.pool.QueryRow(ctx, q, id).Scan(
-		&rec.ID, &rec.Username, &rec.Email, &rec.CreatedAt, &rec.UpdatedAt,
+		&rec.ID, &rec.Username, &rec.Email, &rec.DisplayName, &rec.CreatedAt, &rec.UpdatedAt,
 	)
 	if err != nil {
 		return UserRecord{}, translate(err)
@@ -109,19 +109,20 @@ func (p *Postgres) Get(ctx context.Context, id string) (UserRecord, error) {
 }
 
 // Update aplica solo los campos provistos (COALESCE conserva el
-// valor actual) y marca updated_at.
-func (p *Postgres) Update(ctx context.Context, id string, username, email *string) (UserRecord, error) {
+// valor actual) y marca updated_at. El username no es editable:
+// es el identificador estable del usuario.
+func (p *Postgres) Update(ctx context.Context, id string, displayName, email *string) (UserRecord, error) {
 	const q = `
 		UPDATE users
-		SET username   = COALESCE($2, username),
-		    email      = COALESCE($3, email),
-		    updated_at = now()
+		SET display_name = COALESCE($2, display_name),
+		    email        = COALESCE($3, email),
+		    updated_at   = now()
 		WHERE user_id = $1
-		RETURNING user_id::text, username, email, created_at, updated_at`
+		RETURNING user_id::text, username, email, display_name, created_at, updated_at`
 
 	var rec UserRecord
-	err := p.pool.QueryRow(ctx, q, id, username, email).Scan(
-		&rec.ID, &rec.Username, &rec.Email, &rec.CreatedAt, &rec.UpdatedAt,
+	err := p.pool.QueryRow(ctx, q, id, displayName, email).Scan(
+		&rec.ID, &rec.Username, &rec.Email, &rec.DisplayName, &rec.CreatedAt, &rec.UpdatedAt,
 	)
 	if err != nil {
 		return UserRecord{}, translate(err)
@@ -136,10 +137,12 @@ func (p *Postgres) Ping(ctx context.Context) error { return p.pool.Ping(ctx) }
 func (p *Postgres) Close() { p.pool.Close() }
 
 // translate convierte errores del driver en errores de dominio de
-// la capa store, estables para consumir desde el servicio.
+// la capa store, estables para consumir desde el servicio. En las
+// violaciones de unicidad se mira el nombre de la restricción para
+// distinguir un email repetido de un username repetido: sin eso, ambos
+// casos serían indistinguibles para el caller.
 func translate(err error) error {
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
 
@@ -147,6 +150,9 @@ func translate(err error) error {
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23505": // unique_violation
+			if pgErr.ConstraintName == "users_username_key" {
+				return ErrUsernameTaken
+			}
 			return ErrEmailTaken
 		case "22P02": // invalid_text_representation (uuid malformado)
 			return ErrNotFound
