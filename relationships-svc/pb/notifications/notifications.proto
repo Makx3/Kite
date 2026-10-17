@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+// Copia del contrato publicado por el servicio Notifications.
+// Vive aquí porque cada servicio compila desde su propio contexto de
+// build (su Dockerfile) y necesita el cliente gRPC localmente; un proto
+// compartido en la raíz del repo acoplaría los builds entre servicios.
+// Si el contrato de Notifications cambia, actualizar esta copia y
+// regenerar los stubs de Go (ver AGENTS.md).
+
+package notifications;
+
+option go_package = "github.com/Makx3/Kite/relationships-svc/pb/notifications";
+
+import "google/protobuf/timestamp.proto";
+
+// ─────────────────────────────────────────────────────────
+// Notification: alerta dirigida a un usuario (user_id) por una
+// acción de otro usuario (source_user_id). Los identificadores son
+// referencias lógicas a los servicios Users y Posts: este servicio
+// no valida su existencia ni mantiene claves foráneas cruzadas.
+// ─────────────────────────────────────────────────────────
+
+// NotificationType distingue los dos disparadores reales del
+// sistema. Se modela como enum (y no como string) para que el
+// contrato sea cerrado y el compilador de protobuf rechace valores
+// inventados; la base de datos guarda el nombre sin el prefijo.
+enum NotificationType {
+  NOTIFICATION_TYPE_UNSPECIFIED = 0;
+  NOTIFICATION_TYPE_NEW_FOLLOWER = 1;
+  NOTIFICATION_TYPE_LIKE = 2;
+}
+
+message Notification {
+  string notification_id = 1;
+  NotificationType type = 2;
+  string user_id = 3;        // destinatario de la alerta
+  string source_user_id = 4; // usuario que originó la acción
+  // post_id solo tiene valor en notificaciones de tipo LIKE.
+  optional string post_id = 5;
+  bool is_read = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+// ─ Mensajes de operación ─────────────────────────────────
+
+message NotifyNewFollowerRequest {
+  string follower_id = 1;
+  string followee_id = 2;
+}
+
+message NotifyNewFollowerResponse {
+  Notification notification = 1;
+}
+
+message NotifyPostLikedRequest {
+  string post_id = 1;
+  string liker_id = 2;
+  string post_author_id = 3;
+}
+
+message NotifyPostLikedResponse {
+  Notification notification = 1;
+}
+
+message GetUnreadNotificationsRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetUnreadNotificationsResponse {
+  repeated Notification notifications = 1;
+  int32 total = 2;
+}
+
+message MarkAsReadRequest {
+  string user_id = 1;
+  string notification_id = 2;
+}
+
+message MarkAsReadResponse {
+  Notification notification = 1;
+}
+
+// ─ Servicio ──────────────────────────────────────────────
+
+// NotificationService recibe los dos disparadores del sistema
+// (nuevo seguidor y like) y expone la bandeja de alertas sin leer.
+service NotificationService {
+  rpc NotifyNewFollower (NotifyNewFollowerRequest) returns (NotifyNewFollowerResponse);
+  rpc NotifyPostLiked (NotifyPostLikedRequest) returns (NotifyPostLikedResponse);
+  rpc GetUnreadNotifications (GetUnreadNotificationsRequest) returns (GetUnreadNotificationsResponse);
+  rpc MarkAsRead (MarkAsReadRequest) returns (MarkAsReadResponse);
+}
