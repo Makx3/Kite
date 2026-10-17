@@ -1,0 +1,149 @@
+# ─────────────────────────────────────────────────────────
+# Kite — red social mínima
+#
+# Levanta el sistema completo con `docker compose up`:
+#   * una base PostgreSQL por servicio, con su propio volumen. Cada
+#     servicio es dueño exclusivo de la suya: no se comparte ninguna,
+#     ni la instancia ni las credenciales,
+#   * los servicios de negocio Users, Relationships y Notifications,
+#   * el API Gateway, único punto de entrada HTTP del sistema.
+#
+# Aislamiento de red (requisito de la rúbrica): los servicios internos y
+# las bases viven en la red `backend`, que es interna: no se publican
+# puertos y no hay salida al exterior. Solo el API Gateway se conecta
+# además a `frontend`, la única red publicada al host. Por eso ningún
+# servicio de negocio es alcanzable desde fuera de Docker.
+#
+# Los valores van en `.env` (hay una copia de ejemplo comentada abajo).
+# ─────────────────────────────────────────────────────────
+
+name: kite
+
+networks:
+  # Red interna: servicios y bases. Sin puertos publicados ni internet.
+  backend:
+    internal: true
+  # Red de borde: solo el API Gateway, publicada al host.
+  frontend:
+
+volumes:
+  users_db_data:
+  relationships_db_data:
+  notifications_db_data:
+
+# Bloque común de las bases: misma imagen, reinicio y sonda de salud.
+# Cada servicio declara luego su nombre de base y su volumen.
+x-db-common: &db-common
+  image: postgres:16-alpine
+  restart: unless-stopped
+  networks: [backend]
+  healthcheck:
+    # `$$` deja que el shell del contenedor lea sus propias variables.
+    test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+    interval: 5s
+    timeout: 3s
+    retries: 12
+
+services:
+  # ── Bases de datos ──────────────────────────────────────
+  # Una instancia por servicio. Podrían compartir un solo motor con tres
+  # bases, pero separarlas deja explícito quién es dueño de qué y aísla
+  # el fallo: si una se cae, los otros servicios siguen operando.
+
+  users-db:
+    <<: *db-common
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: users_db
+    volumes:
+      - users_db_data:/var/lib/postgresql/data
+
+  relationships-db:
+    <<: *db-common
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: relationships_db
+    volumes:
+      - relationships_db_data:/var/lib/postgresql/data
+
+  notifications-db:
+    <<: *db-common
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: notifications_db
+    volumes:
+      - notifications_db_data:/var/lib/postgresql/data
+
+  # ── Servicios de negocio ────────────────────────────────
+  # Ninguno publica puertos: se hablan solo por gRPC dentro de `backend`.
+  # Cada uno aplica sus propias migraciones al arrancar y reintenta si la
+  # base aún no está lista, por eso esperan a que su base esté sana.
+
+  users-svc:
+    build: ./users-svc
+    restart: unless-stopped
+    networks: [backend]
+    environment:
+      USERS_GRPC_PORT: "50051"
+      USERS_DB_DSN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@users-db:5432/users_db?sslmode=disable
+    depends_on:
+      users-db:
+        condition: service_healthy
+
+  relationships-svc:
+    build: ./relationships-svc
+    restart: unless-stopped
+    networks: [backend]
+    environment:
+      RELATIONSHIPS_GRPC_PORT: "50052"
+      RELATIONSHIPS_DB_DSN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@relationships-db:5432/relationships_db?sslmode=disable
+      # Disparador hacia Notifications: al crear una arista nueva.
+      RELATIONSHIPS_NOTIFICATIONS_ADDR: notifications-svc:50053
+    depends_on:
+      relationships-db:
+        condition: service_healthy
+      notifications-svc:
+        condition: service_started
+
+  notifications-svc:
+    build: ./notifications-svc
+    restart: unless-stopped
+    networks: [backend]
+    environment:
+      NOTIFICATIONS_GRPC_PORT: "50053"
+      NOTIFICATIONS_DB_DSN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@notifications-db:5432/notifications_db?sslmode=disable
+    depends_on:
+      notifications-db:
+        condition: service_healthy
+
+  # ── API Gateway ─────────────────────────────────────────
+  # Único servicio con puerto publicado, y el único conectado a las dos
+  # redes: recibe HTTP del host por `frontend` y habla gRPC por `backend`.
+
+  api-gateway:
+    build: ./api-gateway
+    restart: unless-stopped
+    networks: [backend, frontend]
+    ports:
+      - "${GATEWAY_HTTP_PORT:-8080}:8080"
+    environment:
+      GATEWAY_HTTP_PORT: "8080"
+      GATEWAY_USERS_ADDR: users-svc:50051
+      GATEWAY_RELATIONSHIPS_ADDR: relationships-svc:50052
+      GATEWAY_NOTIFICATIONS_ADDR: notifications-svc:50053
+    depends_on:
+      users-svc:
+        condition: service_started
+      relationships-svc:
+        condition: service_started
+      notifications-svc:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
