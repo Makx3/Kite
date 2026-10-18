@@ -18,7 +18,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	likespb "github.com/Makx3/Kite/api-gateway/pb/likes"
 	notificationspb "github.com/Makx3/Kite/api-gateway/pb/notifications"
+	postspb "github.com/Makx3/Kite/api-gateway/pb/posts"
 	relationshipspb "github.com/Makx3/Kite/api-gateway/pb/relationships"
 	userspb "github.com/Makx3/Kite/api-gateway/pb/users"
 )
@@ -96,6 +98,59 @@ func (f *fakeNotifications) MarkRead(_ context.Context, userID, notificationID s
 
 func (f *fakeNotifications) State() string { return "READY" }
 
+type fakePosts struct {
+	createFn   func(userID, content string) (*postspb.Post, error)
+	getFn      func(postID string) (*postspb.Post, error)
+	getByIDsFn func(ids []string) ([]*postspb.Post, error)
+}
+
+func (f *fakePosts) Create(_ context.Context, userID, content string) (*postspb.Post, error) {
+	return f.createFn(userID, content)
+}
+
+func (f *fakePosts) Get(_ context.Context, postID string) (*postspb.Post, error) {
+	return f.getFn(postID)
+}
+
+func (f *fakePosts) GetByIDs(_ context.Context, ids []string) ([]*postspb.Post, error) {
+	return f.getByIDsFn(ids)
+}
+
+func (f *fakePosts) State() string { return "READY" }
+
+type fakeFeed struct {
+	userFeedFn    func(userID string, limit, offset int32) ([]string, int32, string, error)
+	gotPagination struct{ limit, offset int32 }
+}
+
+func (f *fakeFeed) UserFeed(_ context.Context, userID string, limit, offset int32) ([]string, int32, string, error) {
+	f.gotPagination.limit, f.gotPagination.offset = limit, offset
+	return f.userFeedFn(userID, limit, offset)
+}
+
+func (f *fakeFeed) State() string { return "READY" }
+
+type fakeLikes struct {
+	likeFn    func(postID, userID, postAuthorID string) (likeID, status string, err error)
+	unlikeFn  func(postID, userID string) error
+	gotAuthor string
+}
+
+func (f *fakeLikes) Like(_ context.Context, postID, userID, postAuthorID string) (*likespb.LikePostResponse, error) {
+	f.gotAuthor = postAuthorID
+	likeID, status, err := f.likeFn(postID, userID, postAuthorID)
+	if err != nil {
+		return nil, err
+	}
+	return &likespb.LikePostResponse{LikeId: likeID, Status: status}, nil
+}
+
+func (f *fakeLikes) Unlike(_ context.Context, postID, userID string) error {
+	return f.unlikeFn(postID, userID)
+}
+
+func (f *fakeLikes) State() string { return "READY" }
+
 // ─────────────────────────────────────────────────────────
 // Utilidades
 // ─────────────────────────────────────────────────────────
@@ -104,10 +159,27 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
+// testBackends reúne los dobles de los seis backends. Cada campo nil
+// se reemplaza por un doble permisivo por defecto.
+type testBackends struct {
+	users *fakeUsers
+	rel   *fakeRelationships
+	notif *fakeNotifications
+	posts *fakePosts
+	feed  *fakeFeed
+	likes *fakeLikes
+}
+
 // newTestRouter construye el router con dobles permisivos por defecto;
 // cada prueba sobreescribe solo lo que le interesa.
 func newTestRouter(t *testing.T, u *fakeUsers, rel *fakeRelationships, n *fakeNotifications) http.Handler {
 	t.Helper()
+	return newTestRouterWith(t, testBackends{users: u, rel: rel, notif: n})
+}
+
+func newTestRouterWith(t *testing.T, b testBackends) http.Handler {
+	t.Helper()
+	u := b.users
 	if u == nil {
 		u = &fakeUsers{
 			createFn: func(username, email, displayName string) (*userspb.User, error) {
@@ -121,6 +193,7 @@ func newTestRouter(t *testing.T, u *fakeUsers, rel *fakeRelationships, n *fakeNo
 			},
 		}
 	}
+	rel := b.rel
 	if rel == nil {
 		rel = &fakeRelationships{
 			followFn: func(followerID, followeeID string) (*relationshipspb.Follow, error) {
@@ -134,6 +207,7 @@ func newTestRouter(t *testing.T, u *fakeUsers, rel *fakeRelationships, n *fakeNo
 			listFn:     func(string, int32, int32) ([]string, int32, error) { return []string{"a"}, 1, nil },
 		}
 	}
+	n := b.notif
 	if n == nil {
 		n = &fakeNotifications{
 			unreadFn: func(string, int32, int32) ([]*notificationspb.Notification, int32, error) {
@@ -144,10 +218,58 @@ func newTestRouter(t *testing.T, u *fakeUsers, rel *fakeRelationships, n *fakeNo
 			},
 		}
 	}
+	p := b.posts
+	if p == nil {
+		p = &fakePosts{
+			createFn: func(userID, content string) (*postspb.Post, error) {
+				return &postspb.Post{
+					PostId:    "p-1",
+					UserId:    userID,
+					Content:   content,
+					CreatedAt: timestamppb.New(time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)),
+				}, nil
+			},
+			getFn: func(postID string) (*postspb.Post, error) {
+				return &postspb.Post{
+					PostId:    postID,
+					UserId:    "author-1",
+					Content:   "hola",
+					CreatedAt: timestamppb.New(time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)),
+				}, nil
+			},
+			getByIDsFn: func(ids []string) ([]*postspb.Post, error) {
+				out := make([]*postspb.Post, 0, len(ids))
+				for _, id := range ids {
+					out = append(out, &postspb.Post{PostId: id, UserId: "author-1", Content: "hola " + id})
+				}
+				return out, nil
+			},
+		}
+	}
+	f := b.feed
+	if f == nil {
+		f = &fakeFeed{
+			userFeedFn: func(string, int32, int32) ([]string, int32, string, error) {
+				return []string{"p-1"}, 1, "2026-10-18T12:00:00Z", nil
+			},
+		}
+	}
+	l := b.likes
+	if l == nil {
+		l = &fakeLikes{
+			likeFn: func(postID, userID, postAuthorID string) (string, string, error) {
+				return "like-1", "ok", nil
+			},
+			unlikeFn: func(string, string) error { return nil },
+		}
+	}
 	return NewRouter(Deps{
 		Users:          u,
 		Relationships:  rel,
 		Notifications:  n,
+		Posts:          p,
+		Feed:           f,
+		Likes:          l,
 		HandlerTimeout: 2 * time.Second,
 	}, discardLogger())
 }
@@ -515,7 +637,10 @@ func TestRaizDevuelveIndiceDeLaAPI(t *testing.T) {
 		}
 		vistos = append(vistos, fila["method"].(string)+" "+fila["path"].(string))
 	}
-	for _, esperada := range []string{"POST /users", "GET /users/{user_id}", "GET /notifications", "GET /health"} {
+	for _, esperada := range []string{
+		"POST /users", "GET /users/{user_id}", "GET /notifications",
+		"POST /posts", "POST /posts/{post_id}/like", "GET /feed", "GET /health",
+	} {
 		if !slices.Contains(vistos, esperada) {
 			t.Errorf("falta la ruta %q en el índice: %v", esperada, vistos)
 		}
@@ -581,6 +706,255 @@ func TestHealthReportaBackends(t *testing.T) {
 	backends, ok := body["backends"].(map[string]any)
 	if !ok || backends["users"] != "READY" {
 		t.Errorf("backends mal reportados: %v", body["backends"])
+	}
+	// Los seis servicios de negocio deben aparecer en la vitalidad.
+	for _, nombre := range []string{"users", "relationships", "notifications", "posts", "feed", "likes"} {
+		if backends[nombre] != "READY" {
+			t.Errorf("falta el backend %q en /health: %v", nombre, body["backends"])
+		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────
+// Publicaciones
+// ─────────────────────────────────────────────────────────
+
+func TestCreatePostUsaEncabezadoComoAutor(t *testing.T) {
+	var gotUser, gotContent string
+	p := &fakePosts{createFn: func(userID, content string) (*postspb.Post, error) {
+		gotUser, gotContent = userID, content
+		return &postspb.Post{PostId: "p-9", UserId: userID, Content: content,
+			CreatedAt: timestamppb.New(time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC))}, nil
+	}}
+	rec := do(t, newTestRouterWith(t, testBackends{posts: p}), http.MethodPost, "/posts",
+		`{"content":"hola kite"}`, map[string]string{"X-User-Id": "u-1"})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("esperaba 201, obtuve %d (%s)", rec.Code, rec.Body.String())
+	}
+	if gotUser != "u-1" || gotContent != "hola kite" {
+		t.Errorf("argumentos mal resueltos: user=%q content=%q", gotUser, gotContent)
+	}
+	body := decodeBody(t, rec)
+	if body["post_id"] != "p-9" || body["status"] != "created" || body["created_at"] == nil {
+		t.Errorf("cuerpo inesperado: %v", body)
+	}
+}
+
+func TestCreatePostSinEncabezadoResponde400(t *testing.T) {
+	rec := do(t, newTestRouter(t, nil, nil, nil), http.MethodPost, "/posts", `{"content":"x"}`, nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("esperaba 400, obtuve %d", rec.Code)
+	}
+	if body := decodeBody(t, rec); body["error"] != "missing_user" {
+		t.Errorf("código de error inesperado: %v", body)
+	}
+}
+
+func TestGetPostDevuelveElContrato(t *testing.T) {
+	rec := do(t, newTestRouter(t, nil, nil, nil), http.MethodGet, "/posts/p-5", "", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("esperaba 200, obtuve %d (%s)", rec.Code, rec.Body.String())
+	}
+	body := decodeBody(t, rec)
+	if body["post_id"] != "p-5" || body["user_id"] != "author-1" || body["content"] == nil {
+		t.Errorf("cuerpo inesperado: %v", body)
+	}
+}
+
+func TestGetPostNoEncontradoResponde404(t *testing.T) {
+	p := &fakePosts{getFn: func(string) (*postspb.Post, error) {
+		return nil, status.Error(codes.NotFound, "publicación no encontrada")
+	}}
+	rec := do(t, newTestRouterWith(t, testBackends{posts: p}), http.MethodGet, "/posts/p-9", "", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("esperaba 404, obtuve %d", rec.Code)
+	}
+	if body := decodeBody(t, rec); body["message"] != "publicación no encontrada" {
+		t.Errorf("mensaje no propagado: %v", body)
+	}
+}
+
+// ─────────────────────────────────────────────────────────
+// Reacciones
+// ─────────────────────────────────────────────────────────
+
+func TestLikeResuelveElAutorConPosts(t *testing.T) {
+	p := &fakePosts{getFn: func(postID string) (*postspb.Post, error) {
+		return &postspb.Post{PostId: postID, UserId: "author-42", Content: "x"}, nil
+	}}
+	l := &fakeLikes{likeFn: func(postID, userID, postAuthorID string) (string, string, error) {
+		return "like-1", "ok", nil
+	}}
+	rec := do(t, newTestRouterWith(t, testBackends{posts: p, likes: l}), http.MethodPost,
+		"/posts/p-7/like", "", map[string]string{"X-User-Id": "u-1"})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("esperaba 201, obtuve %d (%s)", rec.Code, rec.Body.String())
+	}
+	if l.gotAuthor != "author-42" {
+		t.Errorf("el gateway no resolvió el autor: %q", l.gotAuthor)
+	}
+	body := decodeBody(t, rec)
+	if body["like_id"] != "like-1" || body["status"] != "ok" {
+		t.Errorf("cuerpo inesperado: %v", body)
+	}
+}
+
+func TestLikeSinEncabezadoResponde400(t *testing.T) {
+	rec := do(t, newTestRouter(t, nil, nil, nil), http.MethodPost, "/posts/p-7/like", "", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("esperaba 400, obtuve %d", rec.Code)
+	}
+}
+
+// Un post inexistente debe cortar en Posts: ni siquiera se llama a Likes.
+func TestLikePostInexistenteNoLlamaALikes(t *testing.T) {
+	called := false
+	p := &fakePosts{getFn: func(string) (*postspb.Post, error) {
+		return nil, status.Error(codes.NotFound, "publicación no encontrada")
+	}}
+	l := &fakeLikes{likeFn: func(string, string, string) (string, string, error) {
+		called = true
+		return "", "", nil
+	}}
+	rec := do(t, newTestRouterWith(t, testBackends{posts: p, likes: l}), http.MethodPost,
+		"/posts/p-x/like", "", map[string]string{"X-User-Id": "u-1"})
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("esperaba 404, obtuve %d", rec.Code)
+	}
+	if called {
+		t.Error("Likes no debía ser llamado si el post no existe")
+	}
+}
+
+func TestUnlikeResponde204(t *testing.T) {
+	rec := do(t, newTestRouter(t, nil, nil, nil), http.MethodDelete, "/posts/p-7/like", "",
+		map[string]string{"X-User-Id": "u-1"})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("esperaba 204, obtuve %d", rec.Code)
+	}
+	if rec.Body.Len() != 0 {
+		t.Errorf("204 no debe llevar cuerpo, lleva %q", rec.Body.String())
+	}
+}
+
+func TestUnlikePropagaNotFound(t *testing.T) {
+	l := &fakeLikes{unlikeFn: func(string, string) error {
+		return status.Error(codes.NotFound, "like no encontrado")
+	}}
+	rec := do(t, newTestRouterWith(t, testBackends{likes: l}), http.MethodDelete,
+		"/posts/p-7/like", "", map[string]string{"X-User-Id": "u-1"})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("esperaba 404, obtuve %d", rec.Code)
+	}
+}
+
+// ─────────────────────────────────────────────────────────
+// Feed (agregación)
+// ─────────────────────────────────────────────────────────
+
+func TestFeedAgregaFeedYPosts(t *testing.T) {
+	f := &fakeFeed{userFeedFn: func(userID string, limit, offset int32) ([]string, int32, string, error) {
+		return []string{"p-2", "p-1"}, 7, "2026-10-18T12:00:00Z", nil
+	}}
+	p := &fakePosts{getByIDsFn: func(ids []string) ([]*postspb.Post, error) {
+		// Posts responde fuera de orden: el orden del muro manda.
+		return []*postspb.Post{
+			{PostId: "p-1", UserId: "a", Content: "primero"},
+			{PostId: "p-2", UserId: "b", Content: "segundo"},
+		}, nil
+	}}
+	rec := do(t, newTestRouterWith(t, testBackends{feed: f, posts: p}), http.MethodGet,
+		"/feed?limit=2&offset=0", "", map[string]string{"X-User-Id": "u-1"})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("esperaba 200, obtuve %d (%s)", rec.Code, rec.Body.String())
+	}
+	if f.gotPagination.limit != 2 || f.gotPagination.offset != 0 {
+		t.Errorf("paginación mal reenviada: %+v", f.gotPagination)
+	}
+	body := decodeBody(t, rec)
+	if body["total"].(float64) != 7 {
+		t.Errorf("total inesperado: %v", body["total"])
+	}
+	if body["last_updated"] != "2026-10-18T12:00:00Z" {
+		t.Errorf("last_updated inesperado: %v", body["last_updated"])
+	}
+	posts := body["posts"].([]any)
+	if len(posts) != 2 {
+		t.Fatalf("esperaba 2 posts, obtuve %d", len(posts))
+	}
+	first := posts[0].(map[string]any)
+	if first["post_id"] != "p-2" || first["content"] != "segundo" {
+		t.Errorf("el orden del muro no se preservó: %v", first)
+	}
+}
+
+func TestFeedSinUsuarioResponde400(t *testing.T) {
+	rec := do(t, newTestRouter(t, nil, nil, nil), http.MethodGet, "/feed", "", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("esperaba 400, obtuve %d", rec.Code)
+	}
+}
+
+// Un post borrado no debe romper la lectura del resto del muro.
+func TestFeedOmitePostsDesaparecidos(t *testing.T) {
+	f := &fakeFeed{userFeedFn: func(string, int32, int32) ([]string, int32, string, error) {
+		return []string{"p-1", "p-borrado", "p-3"}, 3, "", nil
+	}}
+	p := &fakePosts{getByIDsFn: func(ids []string) ([]*postspb.Post, error) {
+		return []*postspb.Post{
+			{PostId: "p-1", UserId: "a", Content: "uno"},
+			{PostId: "p-3", UserId: "a", Content: "tres"},
+		}, nil
+	}}
+	rec := do(t, newTestRouterWith(t, testBackends{feed: f, posts: p}), http.MethodGet,
+		"/feed", "", map[string]string{"X-User-Id": "u-1"})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("esperaba 200 pese al post desaparecido, obtuve %d", rec.Code)
+	}
+	posts := decodeBody(t, rec)["posts"].([]any)
+	if len(posts) != 2 {
+		t.Errorf("esperaba 2 posts legibles, obtuve %d", len(posts))
+	}
+}
+
+func TestFeedVacioNoEsNull(t *testing.T) {
+	f := &fakeFeed{userFeedFn: func(string, int32, int32) ([]string, int32, string, error) {
+		return nil, 0, "", nil
+	}}
+	rec := do(t, newTestRouterWith(t, testBackends{feed: f}), http.MethodGet,
+		"/feed", "", map[string]string{"X-User-Id": "u-1"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("esperaba 200, obtuve %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"posts":[]`) {
+		t.Errorf("esperaba lista vacía, obtuve %s", rec.Body.String())
+	}
+}
+
+func TestFeedResponde503SiFeedCaido(t *testing.T) {
+	f := &fakeFeed{userFeedFn: func(string, int32, int32) ([]string, int32, string, error) {
+		return nil, 0, "", status.Error(codes.Unavailable, "connection refused")
+	}}
+	rec := do(t, newTestRouterWith(t, testBackends{feed: f}), http.MethodGet,
+		"/feed", "", map[string]string{"X-User-Id": "u-1"})
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("esperaba 503, obtuve %d", rec.Code)
+	}
+}
+
+func TestFeedResponde503SiPostsCaido(t *testing.T) {
+	p := &fakePosts{getByIDsFn: func([]string) ([]*postspb.Post, error) {
+		return nil, status.Error(codes.Unavailable, "connection refused")
+	}}
+	rec := do(t, newTestRouterWith(t, testBackends{posts: p}), http.MethodGet,
+		"/feed", "", map[string]string{"X-User-Id": "u-1"})
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("esperaba 503, obtuve %d", rec.Code)
 	}
 }
 

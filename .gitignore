@@ -1,0 +1,17 @@
+# Variables de entorno — no subir credenciales reales al repo.
+# El archivo .env que ya está versionado actúa como plantilla de ejemplo
+# para `docker compose up`; es seguro porque contiene solo credenciales
+# de desarrollo local que no son accesibles desde fuera de Docker.
+# Para entornos reales, copia .env a .env.local (ignorado) y pon ahí
+# las credenciales reales.
+.env.local
+.env.production
+*.env.local
+
+# Binarios Go compilados localmente
+*/bin/
+bin/
+
+# Archivos de test coverage
+*.out
+coverage.html

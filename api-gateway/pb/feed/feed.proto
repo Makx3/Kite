@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package feed;
+
+option go_package = "github.com/Makx3/Kite/api-gateway/pb/feed";
+
+// ─────────────────────────────────────────────────────────
+// Feed administra el muro personal de cada usuario en Redis:
+// guarda solo los identificadores de las publicaciones, ordenados
+// por fecha. El contenido lo resuelve el API Gateway llamando a
+// Posts; ningún servicio lee la base de datos de otro.
+// ─────────────────────────────────────────────────────────
+
+message RefreshFeedRequest {
+  string author_id = 1;
+  string post_id = 2;
+  int64 created_at = 3; // epoch seconds, sentido por el autor del post
+}
+
+message RefreshFeedResponse {
+  string status = 1;
+  int32 feeds_updated = 2; // muros que recibieron el post (autor + seguidores)
+}
+
+message GetUserFeedRequest {
+  string user_id = 1;
+  int32 limit = 2;  // 0 = valor por defecto del servicio
+  int32 offset = 3;
+}
+
+message GetUserFeedResponse {
+  repeated string post_ids = 1; // de más reciente a más antiguo
+  string last_updated = 2;      // RFC3339 del post más reciente; vacío si no hay nada
+  int32 total = 3;              // total de posts en el muro, independiente de la página
+}
+
+service FeedService {
+  rpc RefreshFeed (RefreshFeedRequest) returns (RefreshFeedResponse);
+  rpc GetUserFeed (GetUserFeedRequest) returns (GetUserFeedResponse);
+}

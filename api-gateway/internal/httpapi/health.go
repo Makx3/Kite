@@ -12,6 +12,9 @@ func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
 			"users":         h.users.State(),
 			"relationships": h.relationships.State(),
 			"notifications": h.notifications.State(),
+			"posts":         h.posts.State(),
+			"feed":          h.feed.State(),
+			"likes":         h.likes.State(),
 		},
 	})
 }
