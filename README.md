@@ -53,6 +53,12 @@ Posts → Feed (refresca el muro) y Feed → Relationships (lista de seguidores)
   campo del JSON) y el sembrador `scripts/seed-demo.py`. Nada del sistema lo
   necesita para funcionar.
 
+> MongoDB 8 se niega a arrancar en kernels Linux de la serie 6.19 a 7.0.13
+> (SERVER-121912). Por eso las dos bases MongoDB arrancan con
+> `GLIBC_TUNABLES=glibc.pthread.rseq=1` en `docker-compose.yml`; en kernels sin
+> ese problema la variable no tiene efecto. Si ves que `posts-db` o `likes-db`
+> se reinician en bucle, revisa `docker compose logs posts-db`.
+
 Para el desarrollo sin Docker, además: Go 1.27+ y Python 3.14+ (ver *Desarrollo local*).
 
 ---

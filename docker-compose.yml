@@ -92,9 +92,16 @@ services:
     volumes:
       - notifications_db_data:/var/lib/postgresql/data
 
+  # `GLIBC_TUNABLES=glibc.pthread.rseq=1` es obligatorio en MongoDB 8.0+:
+  # con kernels Linux de la serie 6.19 a 7.0.13 el mongod se niega a arrancar
+  # por un conflicto de TCMalloc con el ABI de rseq (SERVER-121912), y ahí
+  # `docker compose up` quedaría sin Posts ni Likes. Registrando rseq en glibc
+  # el conflicto desaparece; en kernels sin ese problema no tiene efecto.
+  # Debe ir en cada servicio: `<<` no fusiona los mapas `environment`.
   posts-db:
     <<: *mongo-common
     environment:
+      GLIBC_TUNABLES: glibc.pthread.rseq=1
       MONGO_INITDB_ROOT_USERNAME: ${POSTS_DB_USER:-kite}
       MONGO_INITDB_ROOT_PASSWORD: ${POSTS_DB_PASS:-kite123}
       MONGO_INITDB_DATABASE: posts_db
@@ -104,6 +111,7 @@ services:
   likes-db:
     <<: *mongo-common
     environment:
+      GLIBC_TUNABLES: glibc.pthread.rseq=1
       MONGO_INITDB_ROOT_USERNAME: ${LIKES_DB_USER:-kite}
       MONGO_INITDB_ROOT_PASSWORD: ${LIKES_DB_PASS:-kite123}
       MONGO_INITDB_DATABASE: likes_db
