@@ -7,6 +7,11 @@ cada servicio es dueño exclusivo de su propia base de datos.
 Proyecto semestral de *Sistemas Distribuidos y Escalables* · Entrega 1.
 Integrantes: **Diego Beñaldo** y **Maximiliano Sepulveda**.
 
+El detalle completo del sistema —límites de cada servicio, modelo de datos,
+decisiones técnicas y trade-offs, contratos gRPC y casos de uso— está en el
+**[documento técnico (PDF)](docs/documento-tecnico.pdf)**; su fuente en
+Markdown es [`docs/documento-tecnico.md`](docs/documento-tecnico.md).
+
 ---
 
 ## Arquitectura
@@ -501,6 +506,7 @@ explícitamente: `go test -tags=integration ./internal/store/`.
 
 ```
 .
+├── README.md                   # este documento operacional
 ├── docker-compose.yml          # levanta el sistema completo
 ├── .env                        # valores de ejemplo de las variables de entorno
 ├── api-gateway/                # REST → gRPC y agregación (Go)
@@ -511,8 +517,11 @@ explícitamente: `go test -tags=integration ./internal/store/`.
 ├── feed-svc/                   # muro por usuario (Go + Redis)
 ├── likes-svc/                  # reacciones (Go + MongoDB)
 ├── docs/
-│   ├── documento-tecnico.md    # documento técnico de la entrega
-│   └── arquitectura.png        # diagrama de la arquitectura
+│   ├── documento-tecnico.pdf   # documento técnico de la entrega (el entregable)
+│   ├── documento-tecnico.md    # fuente en Markdown con la que se genera el PDF
+│   ├── documento-tecnico.css   # estilos del PDF
+│   ├── arquitectura.png        # diagrama de la arquitectura
+│   └── build-pdf.sh            # regenera el PDF desde el Markdown
 └── scripts/
     └── seed-demo.py            # dataset de ejemplo por el gateway
 ```
