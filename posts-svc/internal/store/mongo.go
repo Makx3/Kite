@@ -190,8 +190,13 @@ func mapRecord(r bson.M) (PostRecord, error) {
 	if s, ok := r["content"].(string); ok {
 		pr.Content = s
 	}
-	if t, ok := r["created_at"].(time.Time); ok {
+	// El driver decodifica las fechas BSON como bson.DateTime (no como
+	// time.Time), así que se convierte explícitamente.
+	switch t := r["created_at"].(type) {
+	case time.Time:
 		pr.CreatedAt = t
+	case bson.DateTime:
+		pr.CreatedAt = t.Time()
 	}
 	return pr, nil
 }

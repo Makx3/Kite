@@ -39,6 +39,11 @@ func TestMongoIntegration(t *testing.T) {
 	if rec.ID == "" || rec.PostID != "post1" || rec.UserID != "u1" {
 		t.Fatalf("registro inesperado: %+v", rec)
 	}
+	// El driver devuelve bson.DateTime; si mapRecord no lo convierte,
+	// created_at queda en cero.
+	if rec.CreatedAt.IsZero() {
+		t.Fatal("created_at llegó en cero: bson.DateTime no se convirtió a time.Time")
+	}
 
 	// idempotencia por índice único (post_id, user_id)
 	rep, created, err := m.Create(ctx, "post1", "u1")
@@ -50,6 +55,11 @@ func TestMongoIntegration(t *testing.T) {
 	}
 	if rep.ID != rec.ID {
 		t.Fatalf("la repetición debe devolver el like existente: %s != %s", rep.ID, rec.ID)
+	}
+	// Este registro viene de FindOne (mapRecord); si bson.DateTime no se
+	// convierte, created_at queda en cero.
+	if rep.CreatedAt.IsZero() {
+		t.Fatal("created_at del like existente llegó en cero")
 	}
 
 	// otro like en el mismo post

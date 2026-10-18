@@ -47,6 +47,11 @@ func TestMongoIntegration(t *testing.T) {
 	if got.Content != "hola mundo" {
 		t.Fatal("contenido distinto")
 	}
+	// El driver devuelve bson.DateTime; si mapRecord no lo convierte,
+	// created_at queda en cero y la API publica fechas vacías.
+	if got.CreatedAt.IsZero() {
+		t.Fatal("created_at llegó en cero: bson.DateTime no se convirtió a time.Time")
+	}
 
 	list, total, err := m.GetByUser(ctx, "u1", 10, 0)
 	if err != nil || total != 1 || len(list) != 1 {

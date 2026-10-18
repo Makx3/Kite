@@ -159,8 +159,13 @@ func mapRecord(r bson.M) (LikeRecord, error) {
 	if s, ok := r["user_id"].(string); ok {
 		rec.UserID = s
 	}
-	if t, ok := r["created_at"].(time.Time); ok {
+	// El driver decodifica las fechas BSON como bson.DateTime (no como
+	// time.Time), así que se convierte explícitamente.
+	switch t := r["created_at"].(type) {
+	case time.Time:
 		rec.CreatedAt = t
+	case bson.DateTime:
+		rec.CreatedAt = t.Time()
 	}
 	return rec, nil
 }
