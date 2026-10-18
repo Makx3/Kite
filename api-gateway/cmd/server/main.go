@@ -41,7 +41,7 @@ func run(logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Clientes hacia los tres servicios de negocio. Al ser conexiones
+	// Clientes hacia los servicios de negocio. Al ser conexiones
 	// perezosas, el gateway arranca aunque alguno esté caído: el fallo se
 	// degrada por petición (503) sin tumbar el proceso.
 	users, err := clients.NewUsers(cfg.UsersAddr, cfg.BackendTimeout)
@@ -62,16 +62,40 @@ func run(logger *slog.Logger) error {
 	}
 	defer func() { _ = notifications.Close() }()
 
+	posts, err := clients.NewPosts(cfg.PostsAddr, cfg.BackendTimeout)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = posts.Close() }()
+
+	feed, err := clients.NewFeed(cfg.FeedAddr, cfg.BackendTimeout)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = feed.Close() }()
+
+	likes, err := clients.NewLikes(cfg.LikesAddr, cfg.BackendTimeout)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = likes.Close() }()
+
 	logger.Info("clientes gRPC configurados",
 		"users", cfg.UsersAddr,
 		"relationships", cfg.RelationshipsAddr,
 		"notifications", cfg.NotificationsAddr,
+		"posts", cfg.PostsAddr,
+		"feed", cfg.FeedAddr,
+		"likes", cfg.LikesAddr,
 	)
 
 	handler := httpapi.NewRouter(httpapi.Deps{
 		Users:          users,
 		Relationships:  relationships,
 		Notifications:  notifications,
+		Posts:          posts,
+		Feed:           feed,
+		Likes:          likes,
 		HandlerTimeout: cfg.HandlerTimeout,
 	}, logger)
 

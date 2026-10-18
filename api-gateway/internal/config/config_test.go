@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// setBase define las cuatro variables obligatorias; cada prueba quita o
+// setBase define las variables obligatorias; cada prueba quita o
 // cambia la que le interesa.
 func setBase(t *testing.T) {
 	t.Helper()
@@ -14,6 +14,9 @@ func setBase(t *testing.T) {
 	t.Setenv("GATEWAY_USERS_ADDR", "users-svc:50051")
 	t.Setenv("GATEWAY_RELATIONSHIPS_ADDR", "relationships-svc:50052")
 	t.Setenv("GATEWAY_NOTIFICATIONS_ADDR", "notifications-svc:50053")
+	t.Setenv("GATEWAY_POSTS_ADDR", "posts-svc:50054")
+	t.Setenv("GATEWAY_FEED_ADDR", "feed-svc:50055")
+	t.Setenv("GATEWAY_LIKES_ADDR", "likes-svc:50056")
 }
 
 func TestFromEnvCompleta(t *testing.T) {
@@ -49,6 +52,9 @@ func TestFromEnvObligatorias(t *testing.T) {
 		{"sin users", "GATEWAY_USERS_ADDR", "GATEWAY_USERS_ADDR"},
 		{"sin relationships", "GATEWAY_RELATIONSHIPS_ADDR", "GATEWAY_RELATIONSHIPS_ADDR"},
 		{"sin notifications", "GATEWAY_NOTIFICATIONS_ADDR", "GATEWAY_NOTIFICATIONS_ADDR"},
+		{"sin posts", "GATEWAY_POSTS_ADDR", "GATEWAY_POSTS_ADDR"},
+		{"sin feed", "GATEWAY_FEED_ADDR", "GATEWAY_FEED_ADDR"},
+		{"sin likes", "GATEWAY_LIKES_ADDR", "GATEWAY_LIKES_ADDR"},
 	}
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {

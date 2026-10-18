@@ -15,6 +15,9 @@ type Deps struct {
 	Users          UsersBackend
 	Relationships  RelationshipsBackend
 	Notifications  NotificationsBackend
+	Posts          PostsBackend
+	Feed           FeedBackend
+	Likes          LikesBackend
 	HandlerTimeout time.Duration
 }
 
@@ -23,6 +26,9 @@ type Handler struct {
 	users         UsersBackend
 	relationships RelationshipsBackend
 	notifications NotificationsBackend
+	posts         PostsBackend
+	feed          FeedBackend
+	likes         LikesBackend
 	logger        *slog.Logger
 }
 
@@ -34,6 +40,9 @@ func NewRouter(deps Deps, logger *slog.Logger) http.Handler {
 		users:         deps.Users,
 		relationships: deps.Relationships,
 		notifications: deps.Notifications,
+		posts:         deps.Posts,
+		feed:          deps.Feed,
+		likes:         deps.Likes,
 		logger:        logger,
 	}
 
@@ -54,6 +63,15 @@ func NewRouter(deps Deps, logger *slog.Logger) http.Handler {
 	mux.HandleFunc("DELETE /users/{user_id}/follow", h.unfollow)
 	mux.HandleFunc("GET /users/{user_id}/followers", h.followers)
 	mux.HandleFunc("GET /users/{user_id}/following", h.following)
+
+	// Publicaciones y reacciones
+	mux.HandleFunc("POST /posts", h.createPost)
+	mux.HandleFunc("GET /posts/{post_id}", h.getPost)
+	mux.HandleFunc("POST /posts/{post_id}/like", h.likePost)
+	mux.HandleFunc("DELETE /posts/{post_id}/like", h.unlikePost)
+
+	// Muro personal (agregación Feed + Posts)
+	mux.HandleFunc("GET /feed", h.getFeed)
 
 	// Notificaciones
 	mux.HandleFunc("GET /notifications", h.listNotifications)

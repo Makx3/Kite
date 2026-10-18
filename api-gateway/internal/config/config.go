@@ -21,6 +21,12 @@ type Config struct {
 	RelationshipsAddr string
 	// NotificationsAddr es la dirección gRPC del servicio Notifications.
 	NotificationsAddr string
+	// PostsAddr es la dirección gRPC del servicio Posts.
+	PostsAddr string
+	// FeedAddr es la dirección gRPC del servicio Feed.
+	FeedAddr string
+	// LikesAddr es la dirección gRPC del servicio Likes.
+	LikesAddr string
 	// BackendTimeout acota cada llamada gRPC saliente, para que un
 	// servicio lento no arrastre la latencia del gateway.
 	BackendTimeout time.Duration
@@ -34,7 +40,8 @@ type Config struct {
 
 // FromEnv lee y valida la configuración desde el entorno. Son
 // obligatorias: GATEWAY_HTTP_PORT, GATEWAY_USERS_ADDR,
-// GATEWAY_RELATIONSHIPS_ADDR y GATEWAY_NOTIFICATIONS_ADDR.
+// GATEWAY_RELATIONSHIPS_ADDR, GATEWAY_NOTIFICATIONS_ADDR,
+// GATEWAY_POSTS_ADDR, GATEWAY_FEED_ADDR y GATEWAY_LIKES_ADDR.
 func FromEnv() (*Config, error) {
 	cfg := &Config{}
 
@@ -58,6 +65,15 @@ func FromEnv() (*Config, error) {
 	}
 	if cfg.NotificationsAddr = os.Getenv("GATEWAY_NOTIFICATIONS_ADDR"); cfg.NotificationsAddr == "" {
 		return nil, fmt.Errorf("config: GATEWAY_NOTIFICATIONS_ADDR es obligatoria")
+	}
+	if cfg.PostsAddr = os.Getenv("GATEWAY_POSTS_ADDR"); cfg.PostsAddr == "" {
+		return nil, fmt.Errorf("config: GATEWAY_POSTS_ADDR es obligatoria")
+	}
+	if cfg.FeedAddr = os.Getenv("GATEWAY_FEED_ADDR"); cfg.FeedAddr == "" {
+		return nil, fmt.Errorf("config: GATEWAY_FEED_ADDR es obligatoria")
+	}
+	if cfg.LikesAddr = os.Getenv("GATEWAY_LIKES_ADDR"); cfg.LikesAddr == "" {
+		return nil, fmt.Errorf("config: GATEWAY_LIKES_ADDR es obligatoria")
 	}
 
 	if cfg.BackendTimeout, err = durationEnv("GATEWAY_BACKEND_TIMEOUT", 3*time.Second); err != nil {
