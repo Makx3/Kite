@@ -151,7 +151,7 @@ operación central: mantener una lista ordenada por tiempo e insertar en O(log n
 
 | Método gRPC | Entrada | Salida | Notas |
 | :--- | :--- | :--- | :--- |
-| `RefreshFeed` | `author_id`, `post_id` | `status` | Disparado por Posts; reparte el post en el autor y sus seguidores |
+| `RefreshFeed` | `author_id`, `post_id`, `created_at` | `status`, `feeds_updated` | Disparado por Posts; reparte el post en el autor y sus seguidores |
 | `GetUserFeed` | `user_id`, `limit`, `offset` | `post_ids`, `total`, `last_updated` | `total` = `ZCARD` del muro |
 
 `RefreshFeed` pide a **Relationships** los seguidores del autor (con degradación:
@@ -169,7 +169,7 @@ un `ObjectId` de MongoDB.
 | :--- | :--- | :--- | :--- |
 | `LikePost` | `post_id`, `user_id`, `post_author_id` | `like_id`, `status` | Idempotente; **dispara** `NotifyPostLiked` si es nuevo |
 | `UnlikePost` | `post_id`, `user_id` | `status` | `NotFound` si no existía |
-| `GetPostLikes` | `post_id`, `limit`, `offset` | `likes`, `total` | Paginado |
+| `GetPostLikes` | `post_id`, `limit`, `offset` | `user_ids`, `total` | Paginado |
 | `HasLiked` | `post_id`, `user_id` | `liked` | Consulta puntual |
 
 `post_author_id` lo resuelve el **gateway** (con `Posts.GetPost`) antes de la
