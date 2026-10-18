@@ -14,7 +14,7 @@ personas**, **publicar contenido**, **consultar el muro de quienes sigue**,
 **dar y quitar likes** y **recibir y gestionar notificaciones** cuando alguien
 comienza a seguirla o le gusta una publicación suya.
 
-**Usuarios del sistema.** Kite está pensada para dos clases de consumidores:
+Kite está pensada para dos clases de consumidores:
 
 - **Personas usuarias** (a través de un cliente: aplicación, navegador o
   herramientas como `curl` o Postman), que ejercen las operaciones de negocio:
@@ -23,18 +23,19 @@ comienza a seguirla o le gusta una publicación suya.
 - **Clientes integradores** (un futuro frontend u otra aplicación), que consumen
   la API REST del sistema programáticamente.
 
-**Propósito y alcance.** El objetivo de esta primera entrega es demostrar una
-arquitectura de microservicios coherente y funcional de extremo a extremo sobre
-un dominio con suficiente riqueza de relaciones entre entidades. El alcance
-incluye la **identidad**, el **grafo de seguimiento**, las **notificaciones**,
-las **publicaciones**, el **muro por usuario** y los **likes**: seis
-responsabilidades en cinco servicios de negocio más el gateway (ver sección 10).
-La autenticación queda **fuera del alcance**: la identidad del solicitante se
-declara en un encabezado, según se justifica en la sección 6.
+El objetivo de esta primera entrega es demostrar una arquitectura de
+microservicios coherente y funcional de extremo a extremo sobre un dominio con
+suficiente riqueza de relaciones entre entidades. El alcance incluye la
+identidad, el grafo de seguimiento, las notificaciones, las publicaciones, el
+muro por usuario y los likes: seis responsabilidades en cinco servicios de
+negocio más el gateway (ver sección 10). La autenticación queda fuera del
+alcance: la identidad del solicitante se declara en un encabezado, según se
+justifica en la sección 6.
 
-**Característica arquitectónica central.** El sistema tiene **una sola superficie
-externa**: un **API Gateway** que habla HTTP/REST hacia afuera y gRPC hacia
-adentro. Ningún servicio de negocio es alcanzable desde fuera de la red de Docker.
+El rasgo arquitectónico que atraviesa todo el sistema es que hay **una sola
+superficie externa**: un **API Gateway** que habla HTTP/REST hacia afuera y gRPC
+hacia adentro. Ningún servicio de negocio es alcanzable desde fuera de la red de
+Docker.
 Cada servicio es **dueño exclusivo de su propia base de datos** y nunca lee la de
 otro: cuando necesita datos ajenos, se los pide por gRPC al servicio que los
 posee, o el gateway los **agrega** en una sola respuesta.
@@ -290,7 +291,7 @@ centrales son `ZADD` (insertar en el muro del autor y el de cada seguidor),
 documento: es una estructura de ordenamiento, y por eso vive en Redis.
 
 **Entidades de dominio persistidas.** El sistema cubre cinco entidades con
-persistencia real —`User`, `Follow`, `Notification`, `Post` y `Like`—, más los
+persistencia real (`User`, `Follow`, `Notification`, `Post` y `Like`), más los
 muros de Redis, muy por encima del mínimo de dos exigido por la rúbrica. Nada
 relevante vive en memoria: las bases se guardan en **volúmenes** de Docker, y se
 verificó que los datos sobreviven a un `docker compose down` seguido de `up`.
@@ -316,13 +317,13 @@ comunicación entre servicios y dónde queda persistido.
 
 ## UC-1 · Crear cuenta y editar el perfil
 
-**Capa 1 — vista de usuario.** Una persona nueva se registra indicando su
+**Capa 1 (vista de usuario).** Una persona nueva se registra indicando su
 `username`, su `email` y su nombre visible. El sistema le asigna un
 identificador y la deja lista para operar. Más tarde ajusta su nombre visible sin
 cambiar su `username` (que es su identificador estable). *Resultado esperado:* la
 cuenta queda creada y el perfil refleja los cambios.
 
-**Capa 2 — detalle técnico.**
+**Capa 2 (detalle técnico).**
 
 1. `POST /users` llega al gateway con el cuerpo JSON.
 2. El gateway delega en **`Users.CreateUser`** por gRPC (una sola llamada).
@@ -341,12 +342,12 @@ campos enviados → `UPDATE` sobre `users` (que refresca `updated_at`) → `200`
 
 ## UC-2 · Seguir a otra persona y generar la alerta
 
-**Capa 1 — vista de usuario.** Alicia sigue a Bernardo. Bernardo recibe una
+**Capa 1 (vista de usuario).** Alicia sigue a Bernardo. Bernardo recibe una
 notificación de **nuevo seguidor** que, además del identificador, muestra **quién**
 la originó. *Resultado esperado:* el seguimiento queda registrado y Bernardo ve la
 alerta.
 
-**Capa 2 — detalle técnico.** Este caso cruza **dos servicios y dos bases**, con
+**Capa 2 (detalle técnico).** Este caso cruza **dos servicios y dos bases**, con
 una llamada de servicio a servicio (`Relationships → Notifications`) que se
 repite en el patrón de los likes (UC-6).
 
@@ -372,11 +373,11 @@ Notifications.
 
 ## UC-3 · Consultar el grafo de seguidores (paginado)
 
-**Capa 1 — vista de usuario.** Se consulta **quién sigue** a una persona y **a
+**Capa 1 (vista de usuario).** Se consulta **quién sigue** a una persona y **a
 quién sigue** esa persona, por páginas. *Resultado esperado:* la lista de
 identificadores de la página pedida y el total, para poder mostrar "N seguidores".
 
-**Capa 2 — detalle técnico.**
+**Capa 2 (detalle técnico).**
 
 1. `GET /users/{id}/followers?limit=20&offset=0` llega al gateway.
 2. El gateway delega en **`Relationships.GetFollowers(user_id, limit, offset)`**.
@@ -394,12 +395,12 @@ patrón que en UC-4 (una sola llamada de servicio por identificador distinto).
 
 ## UC-4 · Ver la bandeja agregada y marcar como leída
 
-**Capa 1 — vista de usuario.** Bernardo abre sus notificaciones y ve las alertas
+**Capa 1 (vista de usuario).** Bernardo abre sus notificaciones y ve las alertas
 **sin leer**, cada una con **quién** la originó, con un único llamado. Luego marca
 una como leída y desaparece de la bandeja. *Resultado esperado:* una bandeja
 completa y autocontenida, y la alerta marcada.
 
-**Capa 2 — detalle técnico.** Este es el caso donde el **gateway agrega**.
+**Capa 2 (detalle técnico).** Este es el caso donde el **gateway agrega**.
 
 1. `GET /notifications` llega con el encabezado `X-User-Id: bob`.
 2. El gateway delega en **`Notifications.GetUnreadNotifications(bob, limit,
@@ -421,11 +422,11 @@ accesorio (ver sección 7), nunca tumba la respuesta completa.
 
 ## UC-5 · Publicar y enriquecer el muro del autor
 
-**Capa 1 — vista de usuario.** Alicia escribe una publicación y aparece de
+**Capa 1 (vista de usuario).** Alicia escribe una publicación y aparece de
 inmediato en su propio muro. *Resultado esperado:* el post queda persistido y el
 muro del autor lo contiene.
 
-**Capa 2 — detalle técnico.** Este es el flujo que pone a Posts y Feed a
+**Capa 2 (detalle técnico).** Este es el flujo que pone a Posts y Feed a
 trabajar juntos, sin tocar a Notifications.
 
 1. `POST /posts` llega al gateway con `X-User-Id: alice` y el cuerpo
@@ -447,12 +448,12 @@ Relationships.
 
 ## UC-6 · Dar like y notificar al autor
 
-**Capa 1 — vista de usuario.** Alicia le da like a una publicación de Bernardo.
+**Capa 1 (vista de usuario).** Alicia le da like a una publicación de Bernardo.
 Bernardo recibe una notificación de **like** que muestra quién reaccionó y sobre
 qué publicación. Repetir el like no duplica nada. *Resultado esperado:* la
 reacción queda registrada y Bernardo ve la alerta.
 
-**Capa 2 — detalle técnico.** Es el segundo flujo con llamada de servicio a
+**Capa 2 (detalle técnico).** Es el segundo flujo con llamada de servicio a
 servicio (`Likes → Notifications`) y con el mismo patrón de degradación.
 
 1. `POST /posts/{post_id}/like` llega con `X-User-Id: alice`.
@@ -478,11 +479,11 @@ cliente → Gateway → Posts → Likes → Notifications.
 
 ## UC-7 · Ver el muro agregado
 
-**Capa 1 — vista de usuario.** Alicia abre su muro y ve, de más reciente a más
+**Capa 1 (vista de usuario).** Alicia abre su muro y ve, de más reciente a más
 antiguo, las publicaciones de quienes sigue (y las suyas propias), con un total.
 *Resultado esperado:* un muro completo y autocontenido con un único llamado.
 
-**Capa 2 — detalle técnico.** Este es el segundo caso de **agregación en el
+**Capa 2 (detalle técnico).** Este es el segundo caso de **agregación en el
 gateway** (junto con UC-4).
 
 1. `GET /feed?limit=20&offset=0` llega con `X-User-Id: alice`.
@@ -517,8 +518,10 @@ que ninguno).
 
 # 6. Decisiones técnicas y trade-offs
 
-Cada decisión se presenta con su contexto, lo que **se gana**, lo que **se pierde**
-y las **alternativas descartadas**.
+Las decisiones estructurantes del sistema (6.1, 6.3, 6.6, 6.10 y 6.13) se
+desglosan con su contexto, sus ganancias, sus pérdidas y las alternativas que
+se descartaron. El resto se explica en prosa, pero también deja explícito qué
+se gana, qué se pierde y qué se dejó de lado y por qué.
 
 ### 6.1 Límites de los servicios: por qué cada responsabilidad es su propio servicio
 
@@ -549,25 +552,22 @@ división debe responder a cohesión, no a repartirse tareas); y **un servicio d
 
 ### 6.2 Una base de datos por servicio (y no una base compartida)
 
-**Decisión.** Cada servicio tiene su **propia base**, con su **propia instancia y
-credenciales**; ninguno consulta la base de otro.
+Cada servicio tiene su **propia base**, con su propia instancia y credenciales,
+y ninguno consulta la base de otro. Es lo que hace real la independencia: cada
+servicio evoluciona su esquema sin coordinar, un fallo de una base no arrastra
+a las demás, y se elimina el *coupling* negativo que la rúbrica penaliza
+(servicios que comparten esquema quedan atados por él).
 
-**Ganancias.** Es lo que hace **real** la independencia: cada servicio evoluciona su
-esquema sin coordinar; un fallo de una base no arrastra a las demás; y se elimina el
-*coupling* negativo que la rúbrica penaliza (servicios que comparten esquema quedan
-atados por él).
-
-**Pérdidas.** **No hay JOINs entre servicios** ni transacciones distribuidas; hay que
-**agregar** en el gateway y aceptar duplicación de identificadores; y hay más
-infraestructura (seis instancias en vez de una).
-
-**Alternativas descartadas.** **Una sola base con varios esquemas** (más cómoda y con
-transacciones, pero es exactamente el acoplamiento por base de datos que la rúbrica
-declara insuficiente); y **una base con una tabla por servicio** (peor aún).
-**Nota de implementación:** en el compose se eligió **una instancia por servicio**
-en lugar de un único motor con varias bases, para que la propiedad quede explícita en
-`docker ps` y para aislar el fallo; el costo es algo más de memoria, aceptable en el
-alcance del laboratorio.
+El precio es que **no hay JOINs entre servicios** ni transacciones
+distribuidas: hay que agregar en el gateway y aceptar duplicación de
+identificadores, además de mantener más infraestructura (seis instancias en vez
+de una). Se descartó **una sola base con varios esquemas** (más cómoda y con
+transacciones, pero es exactamente el acoplamiento por base de datos que la
+rúbrica declara insuficiente) y **una base con una tabla por servicio** (peor
+aún). En el compose se eligió una instancia por servicio en lugar de un único
+motor con varias bases, para que la propiedad quede explícita en `docker ps` y
+para aislar el fallo; el costo es algo más de memoria, aceptable en el alcance
+del laboratorio.
 
 ### 6.3 Elección de base por servicio: PostgreSQL, MongoDB y Redis
 
@@ -594,8 +594,9 @@ escrito.
 
 **Alternativas descartadas.** **MongoDB para las tres relaciones**: el grafo de
 seguimiento es *literalmente* una relación N:M con una restricción de unicidad y
-otra de no-reflexividad —justo el terreno donde un modelo de documentos obliga a
-implementar a mano lo que el motor ya garantiza—; la identidad exige unicidad
+otra de no-reflexividad, que es justo el terreno donde un modelo de documentos
+obliga a implementar a mano lo que el motor ya garantiza; la identidad exige
+unicidad
 estricta; y las notificaciones se consultan por bandeja ordenada, algo que un
 índice relacional resuelve directamente. **Redis para el muro con listas**:
 `LRANGE` recorta pero no pagina por *score* ni da un total barato. **Redis como
@@ -604,45 +605,39 @@ mismo dato sin un protocolo de invalidación claro.
 
 ### 6.4 gRPC con Protobuf como comunicación interna (y REST solo en el borde)
 
-**Decisión.** REST/HTTP **solo** hacia afuera (en el gateway); gRPC/Protobuf entre
-todos los servicios.
+REST/HTTP **solo** hacia afuera, en el gateway; gRPC/Protobuf entre todos los
+servicios. El contrato es tipado y versionado en un `.proto` que genera stubs:
+un cambio incompatible **no compila**, en lugar de descubrirse en producción,
+los mensajes tienen sentido de negocio y el transporte es eficiente sobre
+HTTP/2.
 
-**Ganancias.** El contrato es **tipado y versionado** en un `.proto` y genera
-stubs: un cambio incompatible **no compila**, en lugar de descubrirse en
-producción; los mensajes tienen **sentido de negocio**; y el transporte es eficiente
-sobre HTTP/2.
-
-**Pérdidas.** Es **menos cómodo de depurar a mano** que un `curl` (mitigado: los
-servicios registran *server reflection*, así que `grpcurl` funciona sin los `.proto`)
-y no lo consume un navegador directamente (por eso existe el gateway).
-
-**Alternativas descartadas.** **REST entre servicios** (más familiar, pero contratos
-más débiles y sin generación de código); **GraphQL** (innecesario aquí); **JSON-RPC**
-(sin tipado fuerte).
+Lo que se pierde es comodidad de depuración: un `curl` es más inmediato que un
+cliente gRPC (aunque los servicios registran *server reflection*, así que
+`grpcurl` funciona sin los `.proto`) y un navegador no consume gRPC
+directamente, que es justamente para lo que existe el gateway. Entre las
+alternativas quedaron **REST entre servicios** (más familiar, pero contratos más
+débiles y sin generación de código), **GraphQL** (innecesario aquí) y
+**JSON-RPC** (sin tipado fuerte).
 
 ### 6.5 Sin broker ni cola de mensajes
 
-**Decisión.** **Todas** las llamadas entre servicios son gRPC directo. No hay
-broker.
+Todas las llamadas entre servicios son gRPC directo, sin broker. Esto cumple el
+requisito de la entrega (una cola transportando tráfico entre servicios lo
+contradiría), evita una pieza de infraestructura que mantener y hace el flujo
+tratable: el orden de las llamadas se lee en el código.
 
-**Ganancias.** Cumple el requisito de la entrega (**una cola transportando tráfico
-entre servicios lo contradiría**), evita una pieza de infraestructura que
-mantener, y hace el flujo **tratable**: el orden de las llamadas se lee en el
-código.
-
-**Pérdidas.** Las llamadas son **síncronas**: el emisor espera, y no hay
+A cambio, las llamadas son **síncronas**: el emisor espera y no hay
 almacenamiento intermedio que absorba picos. La consecuencia se asume
-explícitamente en UC-2 y UC-6: si Notifications está caído cuando alguien sigue a
-otro o le da like a una publicación, la alerta **no se reintenta** (el
-seguimiento y el like sí se persisten). Es una decisión consciente: se prefirió un
-sistema sin dependencias extra a una garantía de entrega que exigiría *outbox* o
-una cola.
+explícitamente en UC-2 y UC-6: si Notifications está caído cuando alguien sigue
+a otro o le da like a una publicación, la alerta no se reintenta, aunque el
+seguimiento y el like sí se persisten. Se prefirió un sistema sin dependencias
+extra a una garantía de entrega que exigiría *outbox* o una cola.
 
-**Alternativas descartadas.** **RabbitMQ** entre Posts y Notifications: figuraba en
-un borrador anterior y se **eliminó** porque contradecía el requisito de gRPC.
-**Patrón outbox + reintentos**: descartado por alcance (añade una tabla de eventos y
-un proceso de reenvío que no aporta a lo que evalúa esta entrega), anotado como
-mejora futura.
+De las alternativas, **RabbitMQ** entre Posts y Notifications figuraba en un
+borrador anterior y se eliminó porque contradecía el requisito de gRPC; el
+**patrón outbox con reintentos** se descartó por alcance (añade una tabla de
+eventos y un proceso de reenvío que no aporta a lo que evalúa esta entrega) y
+quedó anotado como mejora futura.
 
 ### 6.6 El API Gateway como único punto de entrada **y** agregador
 
@@ -670,7 +665,7 @@ tipo de cliente** (sobre-ingeniería para esta entrega).
 
 ### 6.7 Diseño del Protobuf
 
-**Decisiones y por qué.** El **tipo de notificación es un `enum`** y no un `string`:
+**Cómo quedó el contrato y por qué.** El **tipo de notificación es un `enum`** y no un `string`:
 el contrato queda **cerrado** y el compilador rechaza valores inventados (antes era
 un `string` que permitía cualquier cosa). Los campos editables de `UpdateUser` son
 **`optional`**, que expresa con precisión la semántica de parche ("solo lo
@@ -679,7 +674,7 @@ de reutilizar uno genérico: permite que cada uno evolucione sin arrastrar a los
 demás. Las fechas usan **`google.protobuf.Timestamp`**. Los identificadores son
 `string` en el contrato aunque la base use `UUID`.
 
-**Trade-offs.** Un `enum` exige **actualizar el contrato (y regenerar) para añadir un
+**Lo que cuesta cada elección.** Un `enum` exige **actualizar el contrato (y regenerar) para añadir un
 tipo**, mientras que un `string` sería más laxo; se prefiere el error temprano.
 `optional` añade **presencia explícita** al JSON/binary, con algo más de tamaño.
 Muchos mensajes implican **más líneas** de `.proto`, a cambio de compatibilidad.
@@ -690,39 +685,33 @@ Muchos mensajes implican **más líneas** de `.proto`, a cambio de compatibilida
 
 ### 6.8 Identificadores UUID generados por la base
 
-**Decisión.** El `user_id` (y el `id` de notificación) son **UUID generados por la
-base** con `gen_random_uuid()`.
+El `user_id` (y el `id` de notificación) son UUID generados por la base con
+`gen_random_uuid()`. Los identificadores no pueden colisionar entre servicios ni
+dependen de coordinación; son opacos (no filtran cuántos usuarios hay) y el
+cliente no puede fabricar uno válido.
 
-**Ganancias.** Los identificadores **no pueden colisionar** entre servicios ni
-dependen de coordinación; son **opacos** (no filtran cuántos usuarios hay) y el
-cliente **no** puede fabricar uno válido.
-
-**Pérdidas.** Un UUID ocupa más que un entero y su aleatoriedad **penaliza la
-localidad** del índice (mitigado con UUID v4 en la práctica y volúmenes pequeños).
-
-**Alternativas descartadas.** **Autoincremental**: enumerable (un cliente adivina
-identificadores ajenos) y colisiona entre servicios. **Generado por el cliente**:
-implica confiar en el cliente. **Siempre por el servicio en código**: posible, pero
-se prefirió el valor por defecto de la base para que ninguna ruta pueda insertar sin
-identificador.
+Un UUID ocupa más que un entero y su aleatoriedad penaliza la localidad del
+índice, aunque en la práctica se usa UUID v4 y los volúmenes son pequeños. Se
+descartó el **autoincremental** (enumerable: un cliente adivina identificadores
+ajenos, y colisiona entre servicios), el **identificador generado por el
+cliente** (implica confiar en el cliente) y **generarlo siempre en el código del
+servicio** (posible, pero se prefirió el valor por defecto de la base para que
+ninguna ruta pueda insertar sin identificador).
 
 ### 6.9 Migraciones embebidas, incrementales y hacia adelante
 
-**Decisión.** Cada servicio lleva sus migraciones **dentro de su artefacto** y las
-aplica al arrancar. Una migración ya aplicada **no se reescribe**: se corrige con
-una nueva.
-
-**Ganancias.** El servicio es **autocontenido** (no necesita una herramienta ni un
-paso manual); el arranque es determinista; y es seguro ante reintentos. El caso real
-se dio en Users: al añadir `display_name` y la unicidad de `username` se creó la
+Cada servicio lleva sus migraciones **dentro de su artefacto** y las aplica al
+arrancar; una migración ya aplicada no se reescribe, se corrige con una nueva.
+El servicio queda autocontenido (no necesita una herramienta ni un paso manual),
+el arranque es determinista y es seguro ante reintentos. El caso real se dio en
+Users: al añadir `display_name` y la unicidad de `username` se creó la
 migración **002** en lugar de editar la 001 ya desplegada, rellenando las filas
-existentes **antes** de exigir `NOT NULL`.
+existentes antes de exigir `NOT NULL`.
 
-**Pérdidas.** No hay **migraciones reversas** (un *rollback* exige escribir una
-nueva) y el arranque paga el costo de aplicar lo pendiente.
-
-**Alternativas descartadas.** **Herramienta externa** (`golang-migrate`, Atlas):
-otro binario que versionar; **scripts de `initdb` en compose**: acoplarían el esquema
+Lo que no hay son migraciones reversas (un *rollback* exige escribir una nueva)
+y el arranque paga el costo de aplicar lo pendiente. Se descartó una
+**herramienta externa** (`golang-migrate`, Atlas), que añadiría otro binario que
+versionar, y los **scripts de `initdb` en compose**, que acoplarían el esquema
 al compose y romperían el principio de que cada servicio es dueño de su base.
 
 ### 6.10 Resiliencia: tiempo límite, errores ordenados, reconexión y degradación
@@ -754,23 +743,18 @@ la recuperación automática ya cubierta).
 
 ### 6.11 Identidad por encabezado `X-User-Id` (sin autenticación)
 
-**Contexto.** El diseño indica que en varias operaciones el `follower_id`/
-`user_id` se toma "del encabezado", pero **no nombra** el encabezado. La rúbrica
-declara la autenticación **opcional**.
-
-**Decisión.** El encabezado se llama **`X-User-Id`** y transporta el identificador
+El diseño indica que en varias operaciones el `follower_id`/`user_id` se toma
+"del encabezado", pero no nombra cuál, y la rúbrica declara la autenticación
+opcional. El encabezado se llama **`X-User-Id`** y transporta el identificador
 del usuario que actúa.
 
-**Ganancias.** Aísla la identidad en un solo lugar y deja la puerta abierta a
-sustituir el encabezado por un token sin tocar los servicios internos (el gateway
-lo resuelve una vez).
-
-**Pérdidas.** **No hay verificación**: un cliente puede declarar cualquier
-identidad. Es aceptable y **explícito** en esta entrega; se documenta como el límite
-principal a cubrir con autenticación real.
-
-**Alternativas descartadas.** **JWT** (fuera de alcance y añade emisor y claves);
-**dejar la identidad al servicio interno** (esparciría el problema por todos).
+Aísla la identidad en un solo lugar y deja la puerta abierta a sustituir el
+encabezado por un token sin tocar los servicios internos, porque el gateway lo
+resuelve una sola vez. El límite es que **no hay verificación**: un cliente
+puede declarar cualquier identidad. Es aceptable y explícito en esta entrega, y
+se documenta como el principal aspecto a cubrir con autenticación real. Se
+descartó **JWT** (fuera de alcance y añade emisor y claves) y **dejar la
+identidad al servicio interno** (esparciría el problema por todos).
 
 ### 6.12 Cumplir el diseño al pie de la letra vs. apartarse de forma documentada
 
@@ -915,9 +899,9 @@ El sistema se diseñó para que **la caída de una pieza no tumbe el resto**.
 
 # 9. Cómo levantar y probar el sistema
 
-La guía operativa completa —puesta en marcha, tabla de variables, `curl` de cada
+La guía operativa completa (puesta en marcha, tabla de variables, `curl` de cada
 endpoint, un flujo completo de una pasada y la prueba de resiliencia paso a
-paso— está en el **`README.md`** del repositorio. En resumen:
+paso) está en el **`README.md`** del repositorio. En resumen:
 
 ```bash
 docker compose up -d --build          # levanta el sistema completo

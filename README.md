@@ -4,7 +4,7 @@ Red social mínima construida como sistema de microservicios. La única superfic
 externa es un **API Gateway** en HTTP/REST; por dentro todo se habla por **gRPC** y
 cada servicio es dueño exclusivo de su propia base de datos.
 
-Proyecto semestral de *Sistemas Distribuidos y Escalables* — Entrega 1.
+Proyecto semestral de *Sistemas Distribuidos y Escalables* · Entrega 1.
 Integrantes: **Diego Beñaldo** y **Maximiliano Sepulveda**.
 
 ---

@@ -17,7 +17,9 @@ cd "$(dirname "$0")"
 MD=documento-tecnico.md
 CSS=documento-tecnico.css
 PDF=documento-tecnico.pdf
-HTML=$(mktemp /tmp/kite-doc-XXXXXX.html)
+# El HTML temporal vive junto al documento (no en /tmp) porque Chromium
+# empaquetado como snap no tiene acceso a /tmp.
+HTML=$(mktemp "$PWD/kite-doc-XXXXXX.html")
 trap 'rm -f "$HTML"' EXIT
 
 BROWSER=google-chrome
