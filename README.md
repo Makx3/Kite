@@ -12,18 +12,23 @@ Integrantes: **Diego Beñaldo** y **Maximiliano Sepulveda**.
 ## Arquitectura
 
 ```
-                        HTTP/REST
-   cliente  ─────────────────────────────▶  API Gateway  (único puerto publicado)
-   (curl,                                            │
-    Postman,                                         │  gRPC
-    frontend)                                        ▼
-                                    ┌──────────────┼──────────────┐
-                                    ▼              ▼              ▼
-                                Users        Relationships   Notifications
-                                    │              │              │
-                                    ▼              ▼              ▼
-                               users_db    relationships_db  notifications_db
+                         HTTP/REST
+    cliente  ─────────────────────────────▶  API Gateway  (único puerto publicado)
+    (curl,                                            │
+     Postman,                                         │  gRPC
+     frontend)                                        ▼
+             ┌────────┬───────────┬──────────────┬──────────┬──────────┬──────────┐
+             ▼        ▼           ▼              ▼          ▼          ▼
+           Users  Relationships  Notifications  Posts     Feed      Likes
+             │        │           │              │          │          │
+             ▼        ▼           ▼              ▼          ▼          ▼
+        users_db relationships_db notifications_db posts_db feed_db likes_db
+        PostgreSQL PostgreSQL    PostgreSQL      MongoDB   Redis    MongoDB
 ```
+
+Además del reparto desde el gateway, hay llamadas gRPC entre servicios:
+Relationships → Notifications (nuevo seguidor), Likes → Notifications (like),
+Posts → Feed (refresca el muro) y Feed → Relationships (lista de seguidores).
 
 | Servicio | Lenguaje | Base de datos | Responsabilidad | Puerto interno |
 | :--- | :--- | :--- | :--- | :--- |
@@ -31,12 +36,12 @@ Integrantes: **Diego Beñaldo** y **Maximiliano Sepulveda**.
 | **Users** | Go | PostgreSQL `users_db` | Identidad: crear, consultar y editar usuarios | `50051` |
 | **Relationships** | Go | PostgreSQL `relationships_db` | Grafo de seguimiento (quién sigue a quién) | `50052` |
 | **Notifications** | Python | PostgreSQL `notifications_db` | Alertas: nuevo seguidor y *like* | `50053` |
+| **Posts** | Go | MongoDB `posts_db` | Publicaciones: crear, consultar y repartir en los muros | `50054` |
+| **Feed** | Go | Redis `feed_db` | Muro por usuario, ordenado por tiempo | `50055` |
+| **Likes** | Go | MongoDB `likes_db` | Reacciones sobre una publicación | `50056` |
 
-> Solo el **8080** se publica al host. Los puertos 50051–50053 son internos: los
+> Solo el **8080** se publica al host. Los puertos 50051–50056 son internos: los
 > servicios de negocio **no** son alcanzables desde fuera de la red de Docker.
-
-Quedan por incorporar los servicios de Posts, Feed y Likes (con MongoDB y Redis),
-que se sumarán al gateway cuando estén listos.
 
 ---
 
@@ -60,8 +65,8 @@ cd Kite
 docker compose up -d --build
 ```
 
-Eso construye las cuatro imágenes, levanta las tres bases, espera a que estén
-sanas y arranca los servicios y el gateway. La primera vez tarda un par de
+Eso construye las siete imágenes, levanta las seis bases, espera a que estén
+sanas y arranca los seis servicios y el gateway. La primera vez tarda un par de
 minutos; las siguientes son segundos.
 
 ### Variables de entorno
@@ -73,6 +78,10 @@ para usar y Compose lo lee solo:
 ```dotenv
 POSTGRES_USER=kite
 POSTGRES_PASSWORD=kite123
+POSTS_DB_USER=kite
+POSTS_DB_PASS=kite123
+LIKES_DB_USER=kite
+LIKES_DB_PASS=kite123
 GATEWAY_HTTP_PORT=8080
 ```
 
@@ -85,17 +94,23 @@ contenedor ya están fijadas en `docker-compose.yml`:
 | Users | `USERS_GRPC_PORT`, `USERS_DB_DSN` |
 | Relationships | `RELATIONSHIPS_GRPC_PORT`, `RELATIONSHIPS_DB_DSN`, `RELATIONSHIPS_NOTIFICATIONS_ADDR` |
 | Notifications | `NOTIFICATIONS_GRPC_PORT`, `NOTIFICATIONS_DB_DSN` |
-| API Gateway | `GATEWAY_HTTP_PORT`, `GATEWAY_USERS_ADDR`, `GATEWAY_RELATIONSHIPS_ADDR`, `GATEWAY_NOTIFICATIONS_ADDR` |
+| Posts | `POSTS_GRPC_PORT`, `POSTS_DB_DSN`, `POSTS_FEED_ADDR` |
+| Feed | `FEED_GRPC_PORT`, `FEED_DB_DSN`, `FEED_RELATIONSHIPS_ADDR` |
+| Likes | `LIKES_GRPC_PORT`, `LIKES_DB_DSN`, `LIKES_NOTIFICATIONS_ADDR` |
+| API Gateway | `GATEWAY_HTTP_PORT` y las direcciones `GATEWAY_*_ADDR` de los seis servicios |
+
+Redis (la base de Feed) no lleva credencial: queda en la red interna, sin puertos
+publicados ni salida al exterior.
 
 ### Comprobar que quedó arriba
 
 ```bash
-docker compose ps                       # los 7 contenedores en "Up"/"healthy"
+docker compose ps                       # los 13 contenedores en "Up"/"healthy"
 curl -s localhost:8080/health
 ```
 
 ```json
-{"backends":{"notifications":"IDLE","relationships":"IDLE","users":"IDLE"},"status":"ok"}
+{"backends":{"feed":"IDLE","likes":"IDLE","notifications":"IDLE","posts":"IDLE","relationships":"IDLE","users":"IDLE"},"status":"ok"}
 ```
 
 Los backends aparecen en `IDLE` hasta la primera llamada real; `IDLE` solo
@@ -233,7 +248,75 @@ curl -s -X DELETE localhost:8080/users/$BOB_ID/follow -H "X-User-Id: $USER_ID"
 
 `204 No Content`. Si la relación no existía, `404`.
 
-### 9. Salud — `GET /health`
+### 9. Crear una publicación — `POST /posts`
+
+```bash
+curl -s -X POST localhost:8080/posts \
+  -H "X-User-Id: $USER_ID" \
+  -H 'Content-Type: application/json' \
+  -d '{"content":"hola desde kite"}'
+```
+
+```json
+{"post_id":"6ad4a8c4…","status":"created","created_at":"2026-10-18T11:08:52.525Z"}
+```
+
+`201 Created`. El autor va en el encabezado. Al persistir, el servicio Posts
+reparte el post en el muro del autor y el de sus seguidores; si Feed estuviera
+caído, la publicación se conserva igual (solo se advierte en el log).
+
+### 10. Ver una publicación — `GET /posts/{post_id}`
+
+```bash
+curl -s localhost:8080/posts/$POST_ID
+```
+
+`200` con el post, o `404` si no existe.
+
+### 11. Dar like — `POST /posts/{post_id}/like`
+
+```bash
+curl -s -X POST localhost:8080/posts/$POST_ID/like -H "X-User-Id: $USER_ID"
+```
+
+```json
+{"like_id":"6ad4a8c5…","status":"ok"}
+```
+
+`201 Created`. Repetir el like es idempotente: devuelve `already_liked` con el
+mismo `like_id` y **no** vuelve a notificar. Si el post no existe, `404` (y en
+ese caso el servicio de Likes ni siquiera se consulta). Cuando el like es nuevo,
+Likes dispara la notificación de tipo `LIKE` al autor del post; si el autor es
+quien reacciona, no hay notificación.
+
+### 12. Quitar like — `DELETE /posts/{post_id}/like`
+
+```bash
+curl -s -X DELETE localhost:8080/posts/$POST_ID/like -H "X-User-Id: $USER_ID"
+```
+
+`204 No Content`. Si la reacción no existía, `404`.
+
+### 13. Ver el muro — `GET /feed`
+
+Este es el segundo endpoint **agregado**: el gateway pide el muro (identificadores
+y total) a Feed y luego completa cada publicación con Posts, preservando el orden
+del muro.
+
+```bash
+curl -s localhost:8080/feed -H "X-User-Id: $USER_ID"
+```
+
+```json
+{"posts":[{"post_id":"6ad4a8c4…","user_id":"91da…","content":"hola desde kite","created_at":"2026-10-18T11:08:52.525Z"}],"total":1,"last_updated":"2026-10-18T11:08:52Z"}
+```
+
+`total` es el total real del muro, independiente de la página pedida
+(`limit`/`offset`). Un muro vacío devuelve `posts: []` (no `null`). Si un post
+del muro ya no existe, se omite con una advertencia en el log sin tumbar la
+respuesta.
+
+### 14. Salud — `GET /health`
 
 ```bash
 curl -s localhost:8080/health
@@ -241,8 +324,9 @@ curl -s localhost:8080/health
 
 ### Flujo completo de una sola pasada
 
-Copia y pega: crea dos usuarios, hace que uno siga al otro, muestra la alerta
-agregada, la marca como leída y deshace el seguimiento.
+Copia y pega: crea dos usuarios, hace que uno siga al otro, publica, da like,
+lee el muro y las alertas de los dos tipos, marca una como leída y deshace el
+seguimiento.
 
 ```bash
 BASE=http://localhost:8080
@@ -259,12 +343,21 @@ echo "alice=$ALICE  bob=$BOB"
 
 curl -s -X POST $BASE/users/$BOB/follow -H "X-User-Id: $ALICE"; echo
 curl -s "$BASE/users/$BOB/followers"; echo
+
+POST=$(curl -s -X POST $BASE/posts -H "X-User-Id: $BOB" \
+  -H 'Content-Type: application/json' -d '{"content":"hola desde kite"}' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["post_id"])')
+
+curl -s -X POST $BASE/posts/$POST/like -H "X-User-Id: $ALICE"; echo
+curl -s $BASE/feed -H "X-User-Id: $ALICE"; echo
+
 curl -s $BASE/notifications -H "X-User-Id: $BOB"; echo
 
 NOTIF=$(curl -s $BASE/notifications -H "X-User-Id: $BOB" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["notifications"][0]["notification_id"])')
 
 curl -s -X POST $BASE/notifications/$NOTIF/read -H "X-User-Id: $BOB"; echo
+curl -s -X DELETE $BASE/posts/$POST/like -H "X-User-Id: $ALICE"; echo
 curl -s -X DELETE $BASE/users/$BOB/follow -H "X-User-Id: $ALICE"; echo
 ```
 
@@ -334,11 +427,27 @@ curl -s localhost:8080/health                                          # 200: el
 docker compose start users-svc                                         # se recupera solo
 ```
 
+Con el servicio Posts detenido, en cambio, **todo lo que depende de publicaciones
+se traslada al cliente** en 503 (`/posts`, `/feed` y los likes), porque entregar
+un muro sin contenido sería un éxito engañoso; el resto del sistema sigue en 200:
+
+```bash
+docker compose stop posts-svc
+
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/posts/$POST_ID  # 503
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/users/$ALICE    # 200
+
+docker compose start posts-svc
+```
+
 - El gateway usa **conexiones perezosas**: arranca aunque un servicio esté caído.
 - Cada llamada gRPC tiene su propio tiempo límite, así que un servicio lento no
   arrastra la latencia del gateway.
 - `GET /notifications` **degrada de forma elegante**: si Users no responde, entrega
   igual las alertas, omitiendo el campo accesorio del emisor.
+- Los disparadores también degradan: seguir a alguien o dar like persiste aunque
+  Notifications esté caído, y publicar persiste aunque Feed esté caído; en cada
+  caso solo se registra una advertencia.
 - Nada de esto requiere reiniciar el gateway.
 
 ---
@@ -348,10 +457,15 @@ docker compose start users-svc                                         # se recu
 Cada servicio es un módulo independiente; se compila y prueba por separado.
 
 ```bash
-# Go (Users, Relationships, API Gateway)
-cd users-svc              # o relationships-svc / api-gateway
+# Go (Users, Relationships, Posts, Feed, Likes, API Gateway)
+cd users-svc              # o relationships-svc, posts-svc, feed-svc,
+                          # likes-svc, api-gateway
 gofmt -l . && go build ./... && go vet ./... && go test ./...
 ```
+
+Tras editar un `.proto` de Posts, Feed o Likes, el gateway mantiene una copia del
+contrato en `api-gateway/pb/`; hay que regenerar los stubs en ambos lugares (el
+servicio y el gateway) con el mismo `protoc` de abajo.
 
 Para regenerar los stubs tras editar un `.proto` (los plugins viven en `~/go/bin`):
 
@@ -370,7 +484,10 @@ python -m pytest tests/
 ```
 
 Las pruebas de integración de la capa de datos se saltan salvo que exista una
-base de prueba, por ejemplo `USERS_TEST_DB_DSN` o `RELATIONSHIPS_TEST_DB_DSN`.
+base de prueba: `USERS_TEST_DB_DSN`, `RELATIONSHIPS_TEST_DB_DSN`,
+`POSTS_TEST_DB_DSN`, `LIKES_TEST_DB_DSN` o `FEED_TEST_DB_DSN`. Las de Posts y
+Likes (MongoDB) llevan la etiqueta `integration`, así que se piden
+explícitamente: `go test -tags=integration ./internal/store/`.
 
 ---
 
@@ -384,6 +501,12 @@ base de prueba, por ejemplo `USERS_TEST_DB_DSN` o `RELATIONSHIPS_TEST_DB_DSN`.
 ├── users-svc/                  # identidad (Go)
 ├── relationships-svc/          # grafo de seguimiento (Go)
 ├── notifications-svc/          # alertas (Python)
+├── posts-svc/                  # publicaciones (Go + MongoDB)
+├── feed-svc/                   # muro por usuario (Go + Redis)
+├── likes-svc/                  # reacciones (Go + MongoDB)
+├── docs/
+│   ├── documento-tecnico.md    # documento técnico de la entrega
+│   └── arquitectura.png        # diagrama de la arquitectura
 └── scripts/
     └── seed-demo.py            # dataset de ejemplo por el gateway
 ```
