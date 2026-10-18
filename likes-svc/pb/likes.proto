@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package likes;
+
+option go_package = "github.com/Makx3/Kite/likes-svc/pb";
+
+import "google/protobuf/timestamp.proto";
+
+// ─────────────────────────────────────────────────────────
+// Likes administra las reacciones a una publicación. El índice
+// único (post_id, user_id) garantiza que un usuario reaccione
+// una sola vez a cada post; los identificadores son referencias
+// lógicas a los servicios Posts y Users.
+// ─────────────────────────────────────────────────────────
+
+message Like {
+  string like_id = 1;
+  string post_id = 2;
+  string user_id = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+// ─ Mensajes de operación ─────────────────────────────────
+
+message LikePostRequest {
+  string post_id = 1;
+  string user_id = 2;         // del encabezado X-User-Id en el Gateway
+  string post_author_id = 3;  // lo resuelve el Gateway para no acoplar Likes con Posts
+}
+
+message LikePostResponse {
+  string like_id = 1;
+  string status = 2;
+}
+
+message UnlikePostRequest {
+  string post_id = 1;
+  string user_id = 2;
+}
+
+message UnlikePostResponse {
+  string status = 1;
+}
+
+message GetPostLikesRequest {
+  string post_id = 1;
+  int32 limit = 2;  // 0 = valor por defecto del servicio
+  int32 offset = 3;
+}
+
+message GetPostLikesResponse {
+  repeated string user_ids = 1;
+  int32 total = 2; // total de reacciones, independiente de la página
+}
+
+message HasLikedRequest {
+  string post_id = 1;
+  string user_id = 2;
+}
+
+message HasLikedResponse {
+  bool liked = 1;
+}
+
+// ─ Servicio ──────────────────────────────────────────────
+
+service LikeService {
+  rpc LikePost (LikePostRequest) returns (LikePostResponse);
+  rpc UnlikePost (UnlikePostRequest) returns (UnlikePostResponse);
+  rpc GetPostLikes (GetPostLikesRequest) returns (GetPostLikesResponse);
+  rpc HasLiked (HasLikedRequest) returns (HasLikedResponse);
+}

@@ -1,0 +1,11 @@
+*.test
+**/*.test
+.env
+*.out
+likes-svc
+go.work
+.idea
+.vscode
+**/.git
+**/coverage*
+.DS_Store
