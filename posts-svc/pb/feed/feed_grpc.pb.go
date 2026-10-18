@@ -4,6 +4,13 @@
 // - protoc             v3.21.12
 // source: pb/feed/feed.proto
 
+// Copia del contrato publicado por el servicio Feed.
+// Vive aquí porque cada servicio compila desde su propio contexto de
+// build (su Dockerfile) y necesita el cliente gRPC localmente; un proto
+// compartido en la raíz del repo acoplaría los builds entre servicios.
+// Si el contrato de Feed cambia, actualizar esta copia y regenerar los
+// stubs de Go (ver AGENTS.md).
+
 package feed
 
 import (

@@ -4,6 +4,13 @@
 // 	protoc        v3.21.12
 // source: pb/feed/feed.proto
 
+// Copia del contrato publicado por el servicio Feed.
+// Vive aquí porque cada servicio compila desde su propio contexto de
+// build (su Dockerfile) y necesita el cliente gRPC localmente; un proto
+// compartido en la raíz del repo acoplaría los builds entre servicios.
+// Si el contrato de Feed cambia, actualizar esta copia y regenerar los
+// stubs de Go (ver AGENTS.md).
+
 package feed
 
 import (
@@ -25,7 +32,7 @@ type RefreshFeedRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AuthorId      string                 `protobuf:"bytes,1,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
 	PostId        string                 `protobuf:"bytes,2,opt,name=post_id,json=postId,proto3" json:"post_id,omitempty"`
-	CreatedAt     int64                  `protobuf:"varint,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	CreatedAt     int64                  `protobuf:"varint,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // epoch seconds, sentido por el autor del post
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -84,7 +91,7 @@ func (x *RefreshFeedRequest) GetCreatedAt() int64 {
 type RefreshFeedResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
-	FeedsUpdated  int32                  `protobuf:"varint,2,opt,name=feeds_updated,json=feedsUpdated,proto3" json:"feeds_updated,omitempty"`
+	FeedsUpdated  int32                  `protobuf:"varint,2,opt,name=feeds_updated,json=feedsUpdated,proto3" json:"feeds_updated,omitempty"` // muros que recibieron el post (autor + seguidores)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -136,7 +143,7 @@ func (x *RefreshFeedResponse) GetFeedsUpdated() int32 {
 type GetUserFeedRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"` // 0 = valor por defecto del servicio
 	Offset        int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -195,8 +202,9 @@ func (x *GetUserFeedRequest) GetOffset() int32 {
 
 type GetUserFeedResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PostIds       []string               `protobuf:"bytes,1,rep,name=post_ids,json=postIds,proto3" json:"post_ids,omitempty"`
-	LastUpdated   string                 `protobuf:"bytes,2,opt,name=last_updated,json=lastUpdated,proto3" json:"last_updated,omitempty"`
+	PostIds       []string               `protobuf:"bytes,1,rep,name=post_ids,json=postIds,proto3" json:"post_ids,omitempty"`             // de más reciente a más antiguo
+	LastUpdated   string                 `protobuf:"bytes,2,opt,name=last_updated,json=lastUpdated,proto3" json:"last_updated,omitempty"` // RFC3339 del post más reciente; vacío si no hay nada
+	Total         int32                  `protobuf:"varint,3,opt,name=total,proto3" json:"total,omitempty"`                               // total de posts en el muro, independiente de la página
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -245,6 +253,13 @@ func (x *GetUserFeedResponse) GetLastUpdated() string {
 	return ""
 }
 
+func (x *GetUserFeedResponse) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
 var File_pb_feed_feed_proto protoreflect.FileDescriptor
 
 const file_pb_feed_feed_proto_rawDesc = "" +
@@ -261,10 +276,11 @@ const file_pb_feed_feed_proto_rawDesc = "" +
 	"\x12GetUserFeedRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x03 \x01(\x05R\x06offset\"S\n" +
+	"\x06offset\x18\x03 \x01(\x05R\x06offset\"i\n" +
 	"\x13GetUserFeedResponse\x12\x19\n" +
 	"\bpost_ids\x18\x01 \x03(\tR\apostIds\x12!\n" +
-	"\flast_updated\x18\x02 \x01(\tR\vlastUpdated2\x95\x01\n" +
+	"\flast_updated\x18\x02 \x01(\tR\vlastUpdated\x12\x14\n" +
+	"\x05total\x18\x03 \x01(\x05R\x05total2\x95\x01\n" +
 	"\vFeedService\x12B\n" +
 	"\vRefreshFeed\x12\x18.feed.RefreshFeedRequest\x1a\x19.feed.RefreshFeedResponse\x12B\n" +
 	"\vGetUserFeed\x12\x18.feed.GetUserFeedRequest\x1a\x19.feed.GetUserFeedResponseB)Z'github.com/Makx3/Kite/posts-svc/pb/feedb\x06proto3"
