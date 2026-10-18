@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package feed;
+
+option go_package = "github.com/Makx3/Kite/posts-svc/pb/feed";
+
+message RefreshFeedRequest {
+  string author_id = 1;
+  string post_id = 2;
+  int64 created_at = 3;
+}
+
+message RefreshFeedResponse {
+  string status = 1;
+  int32 feeds_updated = 2;
+}
+
+message GetUserFeedRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetUserFeedResponse {
+  repeated string post_ids = 1;
+  string last_updated = 2;
+}
+
+service FeedService {
+  rpc RefreshFeed (RefreshFeedRequest) returns (RefreshFeedResponse);
+  rpc GetUserFeed (GetUserFeedRequest) returns (GetUserFeedResponse);
+}

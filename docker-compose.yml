@@ -30,6 +30,9 @@ volumes:
   users_db_data:
   relationships_db_data:
   notifications_db_data:
+  posts_db_data:
+  likes_db_data:
+  feed_db_data:
 
 # Bloque común de las bases: misma imagen, reinicio y sonda de salud.
 # Cada servicio declara luego su nombre de base y su volumen.
@@ -76,6 +79,22 @@ services:
       POSTGRES_DB: notifications_db
     volumes:
       - notifications_db_data:/var/lib/postgresql/data
+
+  posts-db:
+    image: mongo:8
+    restart: unless-stopped
+    networks: [backend]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${POSTS_DB_USER:-kite}
+      MONGO_INITDB_ROOT_PASSWORD: ${POSTS_DB_PASS:-kite123}
+      MONGO_INITDB_DATABASE: posts_db
+    volumes:
+      - posts_db_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand('ping').ok\" 2>/dev/null | grep 1 || mongo --eval \"db.adminCommand('ping').ok\" 2>/dev/null | grep 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   # ── Servicios de negocio ────────────────────────────────
   # Ninguno publica puertos: se hablan solo por gRPC dentro de `backend`.
@@ -147,3 +166,15 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+
+  posts-svc:
+    build: ./posts-svc
+    restart: unless-stopped
+    networks: [backend]
+    environment:
+      POSTS_GRPC_PORT: "50054"
+      POSTS_DB_DSN: mongodb://${POSTS_DB_USER:-kite}:${POSTS_DB_PASS:-kite123}@posts-db:27017/posts_db?authSource=admin
+      POSTS_FEED_ADDR: feed-svc:50055
+    depends_on:
+      posts-db:
+        condition: service_healthy
