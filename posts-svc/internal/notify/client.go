@@ -23,13 +23,9 @@ type Client struct {
 }
 
 // New crea el cliente. La conexión es perezosa: grpc.NewClient no conecta
-// de inmediato, así que Posts arranca aunque Feed no esté disponible; el
-// fallo aparece en la primera llamada y la capa de servicio lo degrada
-// sin romper la creación del post.
-//
-// MinConnectTimeout: 2s evita que el canal gRPC espere ~20 s con la
-// reconexión por defecto: si Feed está caído, el error llega rápido y
-// el interceptor de degradado actúa antes de que el deadline del post expire.
+// de inmediato, así que Posts arranca aunque Feed no esté disponible. El
+// MinConnectTimeout de 2s acorta los ~20s por defecto de gRPC para que el
+// error llegue antes de que expire el deadline del post.
 func New(addr string, timeout time.Duration) (*Client, error) {
 	params := grpc.ConnectParams{
 		Backoff:           backoff.DefaultConfig,

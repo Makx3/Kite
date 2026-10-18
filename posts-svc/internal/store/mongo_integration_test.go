@@ -4,6 +4,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -52,12 +53,10 @@ func TestMongoIntegration(t *testing.T) {
 		t.Fatalf("GetByUser: %v total=%d len=%d", err, total, len(list))
 	}
 
-	if err := m.Delete(ctx, rec.ID, "otro"); err != storeErrNotFound() {
-		// comparar
+	if err := m.Delete(ctx, rec.ID, "otro"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Delete con otro autor: quería ErrNotFound y vino %v", err)
 	}
 	if err := m.Delete(ctx, rec.ID, "u1"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 }
-
-func storeErrNotFound() error { return ErrNotFound }

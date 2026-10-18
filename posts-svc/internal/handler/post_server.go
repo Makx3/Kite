@@ -18,10 +18,10 @@ import (
 
 type PostServer struct {
 	pb.UnimplementedPostServiceServer
-	svc *service.UserService
+	svc *service.PostService
 }
 
-func NewPostServer(svc *service.UserService) *PostServer {
+func NewPostServer(svc *service.PostService) *PostServer {
 	return &PostServer{svc: svc}
 }
 

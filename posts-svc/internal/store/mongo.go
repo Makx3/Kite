@@ -41,10 +41,6 @@ func NewMongo(ctx context.Context, dsn string) (*MongoDB, error) {
 	return m, nil
 }
 
-func NewPostgres(ctx context.Context, dsn string, _ int32) (*MongoDB, error) {
-	return NewMongo(ctx, dsn)
-}
-
 func (m *MongoDB) Migrate(ctx context.Context) error {
 	_, _ = m.posts.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "created_at", Value: -1}}},

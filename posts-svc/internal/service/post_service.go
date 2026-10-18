@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -25,19 +26,31 @@ const (
 
 // FeedRefresher notifica a Feed que se creó un post.
 type FeedRefresher interface {
-	RefreshFeed(ctx context.Context, authorID, postID string, createdAt time.Time) error // createdAt time.Time
+	RefreshFeed(ctx context.Context, authorID, postID string, createdAt time.Time) error
 }
 
-type UserService struct {
-	store store.PostStore
-	feed  FeedRefresher
+// PostService orquesta las operaciones sobre publicaciones.
+type PostService struct {
+	store  store.PostStore
+	feed   FeedRefresher
+	logger *slog.Logger
 }
 
-func New(s store.PostStore, f FeedRefresher) *UserService {
-	return &UserService{store: s, feed: f}
+// New inyecta el store, el refresco de feed y el logger. Si feed es nil
+// el disparador queda deshabilitado; si logger es nil se usa el logger
+// por defecto de slog.
+func New(s store.PostStore, f FeedRefresher, logger *slog.Logger) *PostService {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &PostService{store: s, feed: f, logger: logger}
 }
 
-func (s *UserService) CreatePost(ctx context.Context, userID, content string) (domain.Post, error) {
+// CreatePost persiste la publicación y luego la reparte en los feeds de
+// sus seguidores (y el propio autor) mediante Feed.RefreshFeed. Si esa
+// llamada falla, el post ya quedó guardado y el error no se propaga
+// (degradación elegante: que Feed esté caído no impide publicar).
+func (s *PostService) CreatePost(ctx context.Context, userID, content string) (domain.Post, error) {
 	userID = strings.TrimSpace(userID)
 	content = strings.TrimSpace(content)
 	if userID == "" {
@@ -53,18 +66,16 @@ func (s *UserService) CreatePost(ctx context.Context, userID, content string) (d
 	}
 	post := toDomain(rec)
 
-	// Degradación elegante: si Feed falla, no rompemos la creación; solo registramos el error
 	if s.feed != nil {
 		if err := s.feed.RefreshFeed(ctx, post.UserID, post.ID, post.CreatedAt); err != nil {
-			// No propagamos error: el post ya existe; patrón consistente con Relationships→Notifications
-			// (warn via handler/log no disponible aquí; el llamador puede loguear)
-			// para cumplir "sin crash", devolvemos post aunque refresh falle
+			s.logger.Warn("no se pudo refrescar el feed",
+				"post_id", post.ID, "user_id", post.UserID, "error", err)
 		}
 	}
 	return post, nil
 }
 
-func (s *UserService) GetPost(ctx context.Context, id string) (domain.Post, error) {
+func (s *PostService) GetPost(ctx context.Context, id string) (domain.Post, error) {
 	if strings.TrimSpace(id) == "" {
 		return domain.Post{}, fmt.Errorf("%w: post_id es obligatorio", ErrValidation)
 	}
@@ -75,7 +86,7 @@ func (s *UserService) GetPost(ctx context.Context, id string) (domain.Post, erro
 	return toDomain(rec), nil
 }
 
-func (s *UserService) GetPostsByIDs(ctx context.Context, ids []string) ([]domain.Post, []string, error) {
+func (s *PostService) GetPostsByIDs(ctx context.Context, ids []string) ([]domain.Post, []string, error) {
 	res := []domain.Post{}
 	found := map[string]bool{}
 	recs, err := s.store.GetByIDs(ctx, ids)
@@ -95,7 +106,7 @@ func (s *UserService) GetPostsByIDs(ctx context.Context, ids []string) ([]domain
 	return res, missing, nil
 }
 
-func (s *UserService) GetPostsByUser(ctx context.Context, userID string, limit, offset int32) ([]domain.Post, int32, error) {
+func (s *PostService) GetPostsByUser(ctx context.Context, userID string, limit, offset int32) ([]domain.Post, int32, error) {
 	if strings.TrimSpace(userID) == "" {
 		return nil, 0, fmt.Errorf("%w: user_id es obligatorio", ErrValidation)
 	}
@@ -111,7 +122,7 @@ func (s *UserService) GetPostsByUser(ctx context.Context, userID string, limit, 
 	return res, total, nil
 }
 
-func (s *UserService) DeletePost(ctx context.Context, postID, userID string) error {
+func (s *PostService) DeletePost(ctx context.Context, postID, userID string) error {
 	if strings.TrimSpace(postID) == "" || strings.TrimSpace(userID) == "" {
 		return fmt.Errorf("%w: post_id y user_id son obligatorios", ErrValidation)
 	}

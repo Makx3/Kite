@@ -67,7 +67,7 @@ func (f *fakeFeed) RefreshFeed(ctx context.Context, authorID, postID string, cre
 }
 
 func TestCreatePost_Validation(t *testing.T) {
-	svc := New(&fakeStore{}, &fakeFeed{})
+	svc := New(&fakeStore{}, &fakeFeed{}, nil)
 	_, err := svc.CreatePost(context.Background(), "u1", strings.Repeat("a", 281))
 	if !errors.Is(err, ErrValidation) {
 		t.Fatal("esperaba ErrValidation para contenido muy largo")
@@ -83,7 +83,7 @@ func TestCreatePost_Validation(t *testing.T) {
 }
 
 func TestGetPost_NotFound(t *testing.T) {
-	svc := New(&fakeStore{}, nil)
+	svc := New(&fakeStore{}, nil, nil)
 	_, err := svc.GetPost(context.Background(), "noexiste")
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("esperaba ErrNotFound")
@@ -92,7 +92,7 @@ func TestGetPost_NotFound(t *testing.T) {
 
 func TestDeletePost_RequiresMatch(t *testing.T) {
 	fs := &fakeStore{}
-	svc := New(fs, nil)
+	svc := New(fs, nil, nil)
 	p, err := svc.CreatePost(context.Background(), "u1", "hola")
 	if err != nil {
 		t.Fatal(err)

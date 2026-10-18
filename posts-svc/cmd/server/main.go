@@ -118,7 +118,7 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 
-	svc := service.New(m, feed)
+	svc := service.New(m, feed, logger)
 	srv := grpc.NewServer(server.UnaryInterceptors(cfg.RPCTimeout, logger))
 	pb.RegisterPostServiceServer(srv, handler.NewPostServer(svc))
 	healthpb.RegisterHealthServer(srv, healthSrv)
