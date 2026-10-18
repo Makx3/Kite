@@ -2,10 +2,11 @@
 # Kite — red social mínima
 #
 # Levanta el sistema completo con `docker compose up`:
-#   * una base PostgreSQL por servicio, con su propio volumen. Cada
-#     servicio es dueño exclusivo de la suya: no se comparte ninguna,
-#     ni la instancia ni las credenciales,
-#   * los servicios de negocio Users, Relationships y Notifications,
+#   * una base por servicio —PostgreSQL, MongoDB o Redis— con su propio
+#     volumen. Cada servicio es dueño exclusivo de la suya: no se
+#     comparte ninguna, ni la instancia ni las credenciales,
+#   * los servicios de negocio Users, Relationships, Notifications,
+#     Posts, Feed y Likes,
 #   * el API Gateway, único punto de entrada HTTP del sistema.
 #
 # Aislamiento de red (requisito de la rúbrica): los servicios internos y
@@ -47,6 +48,17 @@ x-db-common: &db-common
     timeout: 3s
     retries: 12
 
+# Igual que el anterior, para las dos bases MongoDB (Posts y Likes).
+x-mongo-common: &mongo-common
+  image: mongo:8
+  restart: unless-stopped
+  networks: [backend]
+  healthcheck:
+    test: ["CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand('ping').ok\" 2>/dev/null | grep 1 || mongo --eval \"db.adminCommand('ping').ok\" 2>/dev/null | grep 1"]
+    interval: 5s
+    timeout: 3s
+    retries: 12
+
 services:
   # ── Bases de datos ──────────────────────────────────────
   # Una instancia por servicio. Podrían compartir un solo motor con tres
@@ -81,17 +93,33 @@ services:
       - notifications_db_data:/var/lib/postgresql/data
 
   posts-db:
-    image: mongo:8
-    restart: unless-stopped
-    networks: [backend]
+    <<: *mongo-common
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${POSTS_DB_USER:-kite}
       MONGO_INITDB_ROOT_PASSWORD: ${POSTS_DB_PASS:-kite123}
       MONGO_INITDB_DATABASE: posts_db
     volumes:
       - posts_db_data:/data/db
+
+  likes-db:
+    <<: *mongo-common
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${LIKES_DB_USER:-kite}
+      MONGO_INITDB_ROOT_PASSWORD: ${LIKES_DB_PASS:-kite123}
+      MONGO_INITDB_DATABASE: likes_db
+    volumes:
+      - likes_db_data:/data/db
+
+  # Redis guarda los muros (feed). Sin autenticación: vive en la red
+  # `backend`, que no se publica y no tiene salida al exterior.
+  feed-db:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks: [backend]
+    volumes:
+      - feed_db_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand('ping').ok\" 2>/dev/null | grep 1 || mongo --eval \"db.adminCommand('ping').ok\" 2>/dev/null | grep 1"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -138,6 +166,50 @@ services:
       notifications-db:
         condition: service_healthy
 
+  posts-svc:
+    build: ./posts-svc
+    restart: unless-stopped
+    networks: [backend]
+    environment:
+      POSTS_GRPC_PORT: "50054"
+      POSTS_DB_DSN: mongodb://${POSTS_DB_USER:-kite}:${POSTS_DB_PASS:-kite123}@posts-db:27017/posts_db?authSource=admin
+      POSTS_FEED_ADDR: feed-svc:50055
+    depends_on:
+      posts-db:
+        condition: service_healthy
+      feed-svc:
+        condition: service_started
+
+  feed-svc:
+    build: ./feed-svc
+    restart: unless-stopped
+    networks: [backend]
+    environment:
+      FEED_GRPC_PORT: "50055"
+      FEED_DB_DSN: redis://feed-db:6379/0
+      # El muro se reparte en el autor y su lista de seguidores.
+      FEED_RELATIONSHIPS_ADDR: relationships-svc:50052
+    depends_on:
+      feed-db:
+        condition: service_healthy
+      relationships-svc:
+        condition: service_started
+
+  likes-svc:
+    build: ./likes-svc
+    restart: unless-stopped
+    networks: [backend]
+    environment:
+      LIKES_GRPC_PORT: "50056"
+      LIKES_DB_DSN: mongodb://${LIKES_DB_USER:-kite}:${LIKES_DB_PASS:-kite123}@likes-db:27017/likes_db?authSource=admin
+      # Disparador hacia Notifications: al registrar un like nuevo.
+      LIKES_NOTIFICATIONS_ADDR: notifications-svc:50053
+    depends_on:
+      likes-db:
+        condition: service_healthy
+      notifications-svc:
+        condition: service_started
+
   # ── API Gateway ─────────────────────────────────────────
   # Único servicio con puerto publicado, y el único conectado a las dos
   # redes: recibe HTTP del host por `frontend` y habla gRPC por `backend`.
@@ -153,6 +225,9 @@ services:
       GATEWAY_USERS_ADDR: users-svc:50051
       GATEWAY_RELATIONSHIPS_ADDR: relationships-svc:50052
       GATEWAY_NOTIFICATIONS_ADDR: notifications-svc:50053
+      GATEWAY_POSTS_ADDR: posts-svc:50054
+      GATEWAY_FEED_ADDR: feed-svc:50055
+      GATEWAY_LIKES_ADDR: likes-svc:50056
     depends_on:
       users-svc:
         condition: service_started
@@ -160,21 +235,15 @@ services:
         condition: service_started
       notifications-svc:
         condition: service_started
+      posts-svc:
+        condition: service_started
+      feed-svc:
+        condition: service_started
+      likes-svc:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/health || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 5s
-
-  posts-svc:
-    build: ./posts-svc
-    restart: unless-stopped
-    networks: [backend]
-    environment:
-      POSTS_GRPC_PORT: "50054"
-      POSTS_DB_DSN: mongodb://${POSTS_DB_USER:-kite}:${POSTS_DB_PASS:-kite123}@posts-db:27017/posts_db?authSource=admin
-      POSTS_FEED_ADDR: feed-svc:50055
-    depends_on:
-      posts-db:
-        condition: service_healthy
