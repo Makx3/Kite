@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
 
 	feedpb "github.com/Makx3/Kite/posts-svc/pb/feed"
@@ -25,8 +26,20 @@ type Client struct {
 // de inmediato, así que Posts arranca aunque Feed no esté disponible; el
 // fallo aparece en la primera llamada y la capa de servicio lo degrada
 // sin romper la creación del post.
+//
+// MinConnectTimeout: 2s evita que el canal gRPC espere ~20 s con la
+// reconexión por defecto: si Feed está caído, el error llega rápido y
+// el interceptor de degradado actúa antes de que el deadline del post expire.
 func New(addr string, timeout time.Duration) (*Client, error) {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	params := grpc.ConnectParams{
+		Backoff:           backoff.DefaultConfig,
+		MinConnectTimeout: 2 * time.Second,
+	}
+	conn, err := grpc.NewClient(
+		addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithConnectParams(params),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("notify: no se pudo crear el cliente hacia %q: %w", addr, err)
 	}

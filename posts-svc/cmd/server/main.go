@@ -49,7 +49,7 @@ func connectWithRetry(ctx context.Context, logger *slog.Logger, dsn string, retr
 			case <-time.After(retryBackoff(attempt)):
 			}
 		}
-		m, err := store.NewPostgres(ctx, dsn, 0)
+		m, err := store.NewMongo(ctx, dsn)
 		if err == nil {
 			if err := m.Migrate(ctx); err != nil {
 				m.Close()
